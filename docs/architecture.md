@@ -8,8 +8,8 @@ two user-controlled inputs into a deterministic compatibility report:
 - a frozen customization manifest plus local artifacts;
 - a normalized snapshot of an upstream prompt inventory.
 
-Task 001 establishes the contracts around that pipeline without implementing a
-real collector, classifier, patcher, or publisher.
+Task 001 established the public contracts. Task 002 adds the local comparison
+engine without adding acquisition, patching, publishing, or remote mutation.
 
 ## Component boundaries
 
@@ -36,11 +36,7 @@ Normalization must not invent missing content or use a model to guess identity.
 
 ### 3. Comparison and classification — Task 002
 
-The comparison engine should be a pure function. It must accept normalized
-frozen entries and upstream records and return findings plus one overall status.
-It must not read GitHub, mutate files, call a model, or apply a customization.
-
-Recommended entry point:
+`src/classify-inventory.mjs` exports the pure public entry point:
 
 ```js
 classifyInventory({
@@ -50,29 +46,34 @@ classifyInventory({
 })
 ```
 
-Recommended deterministic order:
+The module validates its complete public input contract and throws
+`ClassificationInputError` for malformed input. It performs no hidden I/O and
+never mutates caller data.
 
-1. Short-circuit to `UPSTREAM_NOT_READY` when the upstream snapshot is not
-   complete and trusted.
-2. Match a frozen target by exact stable ID.
-3. For an exact ID, compare the expected and current content digests.
-4. When the ID is absent, evaluate only explicit aliases and normalized labels.
-5. Emit `POSSIBLE_RENAME` only when exactly one candidate survives.
-6. Emit `AMBIGUOUS_MATCH` when multiple candidates survive.
-7. Emit `TARGET_MISSING` when no candidate survives.
-8. Emit `NEW_UPSTREAM_PROMPT` for unmatched upstream records.
-9. Fold finding severities into the overall compatibility status using the
-   precedence documented in `compatibility-model.md`.
+Classification is deterministic:
 
-No fuzzy threshold, embedding, hosted model, or hidden heuristic belongs in the
-Task 002 baseline. Any future heuristic must be separately versioned and must
-never convert an ambiguous result into an automatic safe decision.
+1. validate required shapes, fields, digests, and unique IDs;
+2. short-circuit a valid non-ready snapshot to `UPSTREAM_NOT_READY`;
+3. match exact stable IDs before any display-name or alias candidate;
+4. compare digests for exact targets;
+5. evaluate only NFKC-normalized, trimmed, case-folded, whitespace-collapsed
+   declared labels and aliases for absent IDs;
+6. consume exact matches and unique rename candidates only;
+7. leave ambiguous candidates unconsumed;
+8. emit frozen-target findings in frozen input order;
+9. emit every unconsumed upstream record in upstream input order;
+10. fold finding severities using the public compatibility precedence.
+
+No fuzzy threshold, embedding, hosted model, edit distance, locale collation, or
+hidden heuristic belongs in the Task 002 engine.
 
 ### 4. Report contract — Task 001
 
-The classifier output is represented by
-`schemas/issue-report.schema.json`. The report contains machine-readable run
-metadata, summary counts, findings, and `mutationsPerformed: false`.
+The classifier returns `{ status, findings, summary }`. Its finding fields and
+summary counts are directly mappable into
+`schemas/issue-report.schema.json`, while report ID, timestamps, contract
+metadata, and upstream source metadata remain the responsibility of a later
+report builder.
 
 The report contract is intentionally independent of GitHub's Issue API. A
 renderer can later turn the payload into Markdown without changing the
@@ -85,7 +86,7 @@ and explicit repository configuration. It should use least-privilege
 permissions, preserve a stable marker, and fail before mutation when identity is
 ambiguous.
 
-No publisher or Issue mutation exists in Task 001.
+No publisher or Issue mutation exists in Task 002.
 
 ### 6. Customization application — future and separate
 
@@ -97,7 +98,8 @@ tool or modify an installed binary.
 
 The system treats these as separate trust zones:
 
-- **Public contract:** schemas, documentation, synthetic examples, fixtures.
+- **Public contract and engine:** schemas, documentation, synthetic examples,
+  fixtures, classifier, and tests.
 - **User-local material:** genuine frozen prompts and customization artifacts.
 - **Acquired upstream material:** versioned input whose readiness must be
   proven.
@@ -108,22 +110,20 @@ must stay synthetic and must never require a private repository.
 
 ## Determinism and auditability
 
-For the same normalized inputs and contract version, the engine should produce
-byte-for-byte equivalent JSON after canonical serialization. Every finding must
-identify the rule that produced it. Overall status is a severity fold, not an
-opaque score.
+For the same normalized inputs and contract version, the engine produces a
+deep-equal result with a fixed key and finding order. Every finding identifies
+the rule through a stable kind, minimum status, and message. Overall status is a
+severity fold, not an opaque score.
 
-## Task 002 handoff
+The engine imports no filesystem, network, clock, locale-service, GitHub, model,
+or process-order source. All fixture acceptance tests execute locally.
 
-Task 002 can begin directly from these artifacts:
+## Task 003 handoff
 
-- import status and finding constants from `src/contracts.mjs`;
-- use every JSON file in `fixtures/` as executable acceptance input;
-- implement the pure classifier described above;
-- validate output against the Issue report shape;
-- keep all tests local and synthetic;
-- do not add upstream collection, model calls, patch application, or Issue
-  mutation.
+Task 003 can consume the classifier result without reimplementing matching:
 
-The fixture names are the required minimum behavior surface. The additional
-`upstream-not-ready` fixture closes the fourth top-level status.
+- preserve `status`, `findings`, `summary`, and their order;
+- add report ID, generated timestamp, contract version, and upstream metadata;
+- map the result into `schemas/issue-report.schema.json`;
+- render Markdown or an Issue payload as a separate pure step;
+- keep GitHub Issue mutation and permissions outside report generation.
