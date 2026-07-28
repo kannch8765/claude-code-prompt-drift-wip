@@ -1,0 +1,35 @@
+{
+  "fixtureVersion": "1",
+  "name": "unchanged",
+  "synthetic": true,
+  "upstreamReady": true,
+  "frozen": [
+    {
+      "customizationId": "fictional.weathered-compass.extra-caution",
+      "targetId": "fictional.weathered-compass",
+      "displayName": "Weathered Compass",
+      "expectedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "aliases": [
+        "Old Brass Compass"
+      ]
+    }
+  ],
+  "upstream": [
+    {
+      "targetId": "fictional.weathered-compass",
+      "displayName": "Weathered Compass",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "aliases": []
+    }
+  ],
+  "expected": {
+    "status": "SAFE_TO_REAPPLY",
+    "findings": [
+      {
+        "kind": "UNCHANGED",
+        "customizationId": "fictional.weathered-compass.extra-caution",
+        "targetId": "fictional.weathered-compass"
+      }
+    ]
+  }
+}

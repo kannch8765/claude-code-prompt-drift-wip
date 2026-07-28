@@ -1,0 +1,27 @@
+{
+  "fixtureVersion": "1",
+  "name": "upstream-not-ready",
+  "synthetic": true,
+  "upstreamReady": false,
+  "readinessReason": "The fictional inventory snapshot is incomplete.",
+  "frozen": [
+    {
+      "customizationId": "fictional.weathered-compass.extra-caution",
+      "targetId": "fictional.weathered-compass",
+      "displayName": "Weathered Compass",
+      "expectedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "aliases": [
+        "Old Brass Compass"
+      ]
+    }
+  ],
+  "upstream": [],
+  "expected": {
+    "status": "UPSTREAM_NOT_READY",
+    "findings": [
+      {
+        "kind": "UPSTREAM_NOT_READY"
+      }
+    ]
+  }
+}

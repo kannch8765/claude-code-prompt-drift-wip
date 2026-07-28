@@ -1,0 +1,17 @@
+{
+  "name": "claude-code-prompt-drift",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Synthetic public contracts for a Claude Code prompt-drift CI watcher.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "node scripts/lint.mjs",
+    "format": "node scripts/format.mjs --check",
+    "test": "node --test",
+    "check": "npm run lint && npm run format && npm test"
+  },
+  "license": "MIT"
+}
