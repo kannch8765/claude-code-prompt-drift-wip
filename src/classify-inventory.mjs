@@ -309,6 +309,7 @@ export function classifyInventory(input) {
       .map((entry) => entry.targetId),
   );
   const consumedUpstreamTargetIds = new Set();
+  const ambiguousCandidateTargetIds = new Set();
   const findings = [];
 
   for (const frozenEntry of frozenEntries) {
@@ -342,6 +343,7 @@ export function classifyInventory(input) {
       (entry) =>
         !reservedExactTargetIds.has(entry.targetId) &&
         !consumedUpstreamTargetIds.has(entry.targetId) &&
+        !ambiguousCandidateTargetIds.has(entry.targetId) &&
         hasMatchKeyIntersection(frozenEntry.matchKeys, entry.matchKeys),
     );
 
@@ -358,6 +360,9 @@ export function classifyInventory(input) {
         }),
       );
     } else if (candidates.length > 1) {
+      for (const candidate of candidates) {
+        ambiguousCandidateTargetIds.add(candidate.targetId);
+      }
       findings.push(
         createFinding("AMBIGUOUS_MATCH", {
           customizationId: frozenEntry.customizationId,
