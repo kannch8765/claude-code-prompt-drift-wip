@@ -84,6 +84,40 @@ test("JSON schemas publish the same status and finding enums", async () => {
   assert.equal(issueSchema.properties.mutationsPerformed.const, false);
 });
 
+test("manifest artifact paths are portable relative paths", async () => {
+  const manifestSchema = await readJson("schemas/frozen-manifest.schema.json");
+  const relativePath = new RegExp(manifestSchema.$defs.relativePath.pattern);
+  const accepted = [
+    "prompt.txt",
+    "prompts/weathered-compass.base.txt",
+    "nested/deeper/customized.txt",
+  ];
+  const rejected = [
+    "../secret",
+    "nested/../secret",
+    "..\\secret",
+    "C:\\secret",
+    "C:/secret",
+    "\\\\server\\share",
+    "/absolute",
+    "nested//secret",
+    "./secret",
+    "nested/./secret",
+  ];
+
+  for (const candidate of accepted) {
+    assert.match(candidate, relativePath, `expected portable path: ${candidate}`);
+  }
+
+  for (const candidate of rejected) {
+    assert.doesNotMatch(
+      candidate,
+      relativePath,
+      `expected rejected path: ${candidate}`,
+    );
+  }
+});
+
 test("example manifest paths and digests are internally consistent", async () => {
   const manifest = await readJson("examples/frozen-customization.manifest.json");
 
@@ -157,6 +191,22 @@ test("every fixture has deterministic synthetic identities and valid outcomes", 
       assert.match(upstream.digest, /^sha256:[0-9a-f]{64}$/, file);
     }
   }
+});
+
+test("target-missing reports both the missing target and unmatched upstream entry", async () => {
+  const fixture = await readJson("fixtures/target-missing.json");
+
+  assert.deepEqual(fixture.expected.findings, [
+    {
+      kind: "TARGET_MISSING",
+      customizationId: "fictional.weathered-compass.extra-caution",
+      targetId: "fictional.weathered-compass",
+    },
+    {
+      kind: "NEW_UPSTREAM_PROMPT",
+      targetId: "fictional.cloud-bell",
+    },
+  ]);
 });
 
 test("examples and fixtures contain no genuine or private prompt material", async () => {

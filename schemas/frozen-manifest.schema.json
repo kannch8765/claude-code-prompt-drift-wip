@@ -154,7 +154,8 @@
     "relativePath": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*//)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\u0000]+$",
+      "description": "Portable relative path using forward slashes only; absolute paths, drive prefixes, backslashes, empty segments, and dot segments are forbidden."
     }
   }
 }

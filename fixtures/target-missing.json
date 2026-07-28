@@ -29,6 +29,10 @@
         "kind": "TARGET_MISSING",
         "customizationId": "fictional.weathered-compass.extra-caution",
         "targetId": "fictional.weathered-compass"
+      },
+      {
+        "kind": "NEW_UPSTREAM_PROMPT",
+        "targetId": "fictional.cloud-bell"
       }
     ]
   }
