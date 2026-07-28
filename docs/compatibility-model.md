@@ -22,14 +22,13 @@ a newly introduced upstream prompt.
 A safe target mapping cannot be established. Examples include a missing target
 with no candidate or multiple plausible candidates.
 
-Malformed classifier input does not produce a compatibility status. It throws a
-stable `ClassificationInputError` before any result can be mistaken for
-`SAFE_TO_REAPPLY`.
-
 ### `UPSTREAM_NOT_READY`
 
 The upstream snapshot is missing, partial, unavailable, or not trusted enough
 to compare. This state is about input readiness rather than compatibility.
+
+Malformed classifier or report input throws a stable typed error before any
+result can be mistaken for a compatibility decision.
 
 ## Public classifier input
 
@@ -59,75 +58,39 @@ to compare. This state is about input readiness rather than compatibility.
 ```
 
 Aliases are optional and behave as empty arrays when omitted. IDs are exact,
-case-sensitive identifiers. Duplicate frozen `customizationId`, duplicate
-frozen `targetId`, and duplicate upstream `targetId` values are rejected.
-Required fields, plain-object shapes, arrays, non-empty strings, and digests are
-validated before classification.
-
-Invalid input throws `ClassificationInputError`. Its stable public fields are:
-
-```js
-{
-  name: "ClassificationInputError",
-  code: string,
-  path: string,
-  message: string,
-}
-```
-
-Input validation precedes readiness classification. A valid input with
-`upstreamReady: false` then short-circuits to one `UPSTREAM_NOT_READY` finding
-and produces no digest, rename, missing, or new-upstream findings.
-
-## String normalization
-
-Rename candidates use only declared display names and aliases. Every compared
-string is transformed in this exact order:
-
-1. Unicode `NFKC` normalization;
-2. trim leading and trailing whitespace;
-3. locale-independent JavaScript `toLowerCase()` case folding;
-4. replace each run of Unicode whitespace with one ASCII space.
-
-No locale-aware collation, fuzzy threshold, edit distance, embedding, model,
-network service, tag inference, or hidden semantic heuristic is used.
+case-sensitive identifiers. Duplicate frozen customization IDs, duplicate
+frozen target IDs, and duplicate upstream target IDs are rejected.
 
 ## Matching and consumption
 
 Frozen entries are processed in caller-provided order, but every upstream ID
 that is an exact target for any frozen entry is reserved before rename matching.
-This prevents an earlier rename from consuming a later frozen target's exact ID.
 
-1. Exact `targetId` matching always wins over all name or alias candidates.
-2. An exact match is consumed and produces `UNCHANGED` or `TARGET_CHANGED`.
-3. Without an exact target, only upstream entries that are neither reserved for
-   an exact match nor already consumed are considered as rename candidates.
-4. One candidate produces `POSSIBLE_RENAME` and consumes that upstream entry.
-5. Multiple candidates produce `AMBIGUOUS_MATCH`; none of those candidates are
-   consumed.
-6. No candidate produces `TARGET_MISSING`.
-7. After all frozen entries, every still-unconsumed upstream entry produces
-   `NEW_UPSTREAM_PROMPT` in upstream input order.
+1. Exact target ID matching always wins.
+2. An exact match produces `UNCHANGED` or `TARGET_CHANGED`.
+3. One declared normalized name or alias candidate produces `POSSIBLE_RENAME`.
+4. Multiple candidates produce `AMBIGUOUS_MATCH` and remain unconsumed.
+5. No candidate produces `TARGET_MISSING`.
+6. Every unconsumed upstream entry produces `NEW_UPSTREAM_PROMPT` in upstream
+   input order.
 
-Because ambiguous candidates are not consumed, they are also emitted as
-`NEW_UPSTREAM_PROMPT` after the frozen-target finding. This closes the Task 001
-fixture ambiguity and ensures no unmatched upstream record disappears.
+Name and alias comparison uses Unicode NFKC normalization, trimming,
+locale-independent lowercase conversion, and whitespace collapse. It does not
+use fuzzy matching, embeddings, a model, or network services.
 
-## Finding kinds
+## Finding kinds and public sections
 
-| Finding | Meaning | Minimum status |
-| --- | --- | --- |
-| `UNCHANGED` | Exact target ID and expected digest both match. | `SAFE_TO_REAPPLY` |
-| `TARGET_CHANGED` | Exact target ID exists, but its digest changed. | `REVIEW_REQUIRED` |
-| `POSSIBLE_RENAME` | The old ID is absent and exactly one explicit candidate remains. | `REVIEW_REQUIRED` |
-| `NEW_UPSTREAM_PROMPT` | An upstream record is not consumed by any frozen target. | `REVIEW_REQUIRED` |
-| `TARGET_MISSING` | The old target is absent and no candidate remains. | `BLOCKED` |
-| `AMBIGUOUS_MATCH` | More than one candidate could represent the target. | `BLOCKED` |
-| `UPSTREAM_NOT_READY` | The upstream input cannot be safely compared. | `UPSTREAM_NOT_READY` |
+| Finding | Meaning | Minimum status | Markdown section |
+| --- | --- | --- | --- |
+| `UNCHANGED` | Exact target ID and digest match. | `SAFE_TO_REAPPLY` | Safe to reapply |
+| `TARGET_CHANGED` | Exact target ID exists but its digest changed. | `REVIEW_REQUIRED` | Review required |
+| `POSSIBLE_RENAME` | Exactly one declared identity candidate remains. | `REVIEW_REQUIRED` | Review required |
+| `NEW_UPSTREAM_PROMPT` | An upstream record remains unconsumed. | `REVIEW_REQUIRED` | New upstream prompts |
+| `TARGET_MISSING` | The target is absent and no candidate remains. | `BLOCKED` | Blocked |
+| `AMBIGUOUS_MATCH` | Multiple candidates could represent the target. | `BLOCKED` | Blocked |
+| `UPSTREAM_NOT_READY` | The upstream input cannot be compared safely. | `UPSTREAM_NOT_READY` | Upstream readiness |
 
-## Status precedence
-
-The overall result uses this precedence:
+Overall status precedence is:
 
 ```text
 UPSTREAM_NOT_READY
@@ -136,12 +99,9 @@ UPSTREAM_NOT_READY
   > SAFE_TO_REAPPLY
 ```
 
-`UPSTREAM_NOT_READY` short-circuits classification after validation. Otherwise
-the most severe finding sets the result status.
+## Stable classifier output
 
-## Stable output
-
-The result shape is:
+The classifier returns:
 
 ```js
 {
@@ -155,20 +115,103 @@ The result shape is:
 }
 ```
 
-Every finding has `kind`, its minimum `status`, and a stable `message`.
-Applicable findings also include `customizationId`, `targetId`,
-`candidateTargetIds`, `expectedDigest`, and `actualDigest`. Candidate IDs follow
-upstream input order. Frozen-target findings follow frozen input order; all
-`NEW_UPSTREAM_PROMPT` findings follow afterward in upstream input order.
-
 `findingCounts` contains every public finding kind in contract order, including
-zero counts. The classifier allocates a new result and does not mutate caller
-arrays or objects. Equal valid inputs produce deep-equal results without using
-the clock, filesystem, network, locale services, or process-global ordering.
+zero counts. Frozen-target findings follow frozen input order; new-upstream
+findings follow afterward in upstream input order.
 
-## Task 003 handoff
+## Public report builder input
 
-Task 003 may add report metadata and render or map this stable result into
-`schemas/issue-report.schema.json`. It should preserve finding order and fields,
-add only report ID, timestamp, upstream source metadata, contract metadata, and
-`mutationsPerformed: false`, and keep Issue mutation outside the renderer.
+`buildIssueReport()` accepts the classifier output plus explicit metadata:
+
+```js
+{
+  classification,
+  reportId,
+  generatedAt,
+  contractVersion: "1",
+  baseline: {
+    source,
+    version,
+    inventoryDigest,
+  },
+  upstream: {
+    ready,
+    source,
+    version,
+    inventoryDigest,
+    readinessReason?,
+  },
+}
+```
+
+`generatedAt` must be a real canonical UTC instant with milliseconds, such as
+`2026-07-29T03:17:00.000Z`. The function never generates a timestamp or report
+ID internally.
+
+Report IDs, identities, versions, and source identifiers have explicit length
+and character boundaries. They reject controls, line separators, backslashes,
+local absolute paths, drive prefixes, and dot-segment path values. A source may
+be a bounded portable token or a canonical `https` source identifier.
+
+A ready upstream requires a version and inventory digest and forbids a readiness
+reason. A non-ready upstream requires null version and digest plus a bounded
+reason. Readiness must agree with the classifier status.
+
+The builder rejects unknown fields, malformed finding shapes, status mismatch,
+duplicate candidates, incomplete finding-count maps, and counts that do not
+match the findings. It does not change classifier content or order and returns a
+deep copy.
+
+## Machine-readable report
+
+The output conforms to `schemas/issue-report.schema.json` and contains:
+
+```js
+{
+  contractVersion: "1",
+  reportId,
+  generatedAt,
+  status,
+  mutationsPerformed: false,
+  baseline,
+  upstream,
+  summary,
+  findings,
+}
+```
+
+The key order above is stable. Equal explicit input produces byte-for-byte equal
+`JSON.stringify()` output.
+
+## Markdown safety contract
+
+`renderIssueMarkdown(report)` is a pure presentation step. It emits exactly one
+renderer-owned marker and fixed public headings. It never creates or updates a
+GitHub Issue.
+
+All report strings are untrusted. The renderer:
+
+- flattens CR, LF, and Unicode line separators before insertion;
+- contains values in dynamically fenced inline code;
+- neutralizes raw HTML, comments, and folding tags;
+- prevents link, heading, table, and backtick injection;
+- prevents user data from reproducing the fixed marker;
+- emits no arbitrary clickable external links;
+- renders only identity, digest, metadata, counts, and fixed messages;
+- rejects prompt-body and artifact-path fields rather than reading them;
+- redacts local absolute path-like text;
+- preserves finding order within stable public sections.
+
+The final body states that no automatic apply or remote mutation occurred.
+
+## Task 004 handoff
+
+Task 004 may implement an Issue publisher that consumes the validated report and
+rendered Markdown. It owns GitHub authentication, repository configuration,
+Issue lookup, marker identity, create/update behavior, and fail-before-mutation
+checks.
+
+The publisher must not reclassify prompts, regenerate report metadata silently,
+read artifact files through the renderer, or add GitHub permissions to the
+builder and renderer. Upstream acquisition and any `tweakcc` customization
+application remain separate integrations.
