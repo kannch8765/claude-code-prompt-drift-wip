@@ -103,6 +103,12 @@ test("manifest artifact paths are portable relative paths", async () => {
     "nested//secret",
     "./secret",
     "nested/./secret",
+    "nested/\n../secret",
+    "nested/\r../secret",
+    "nested/\u2028../secret",
+    "nested/\u2029../secret",
+    "nested/\tsecret",
+    "nested/\u007fsecret",
   ];
 
   for (const candidate of accepted) {
