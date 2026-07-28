@@ -9,7 +9,7 @@ const REPORT_ID_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._:@+-]{0,126}[A-Za-z0-9])?$
 const IDENTITY_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._:@+-]{0,254}[A-Za-z0-9])?$/;
 const VERSION_PATTERN = /^[0-9A-Za-z](?:[0-9A-Za-z._+-]{0,62}[0-9A-Za-z])?$/;
 const SOURCE_TOKEN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._:@+-]{0,126}[A-Za-z0-9])?$/;
-const HTTPS_SOURCE_PATTERN = /^https:\/\/[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:\/(?!\.{1,2}(?:\/|$))[A-Za-z0-9._~%-]+)*$/;
+const HTTPS_SOURCE_PATTERN = /^https:\/\/[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:\/(?!\.{1,2}(?:\/|$))[A-Za-z0-9._~-]+)*$/;
 const CANONICAL_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const UNSAFE_METADATA_PATTERN = /[\u0000-\u001f\u007f\u2028\u2029]/u;
 
