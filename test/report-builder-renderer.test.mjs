@@ -342,7 +342,7 @@ test("renderer neutralizes Markdown, HTML, comments, headings, tables, links, pa
   const classification = classify([frozen()], [upstream({ digest: digest("d") })]);
   classification.findings[0].message =
     "[click](https://evil.invalid) | forged | <details><!-- forged -->\n" +
-    `## forged heading \`tick\` /home/fictional/private.txt ${ISSUE_REPORT_MARKER}`;
+    `## forged heading \`tick\` /usr/local/fictional.txt C:\\private\\inventory \\\\server\\share\\secret ${ISSUE_REPORT_MARKER}`;
   const markdown = renderIssueMarkdown(build(classification));
 
   assert.equal(markdown.split(ISSUE_REPORT_MARKER).length - 1, 1);
@@ -350,10 +350,15 @@ test("renderer neutralizes Markdown, HTML, comments, headings, tables, links, pa
   assert.equal(markdown.includes("<!-- forged -->"), false);
   assert.equal(markdown.includes("\n## forged heading"), false);
   assert.equal(markdown.includes("](https://evil.invalid)"), false);
-  assert.equal(markdown.includes("/home/fictional/private.txt"), false);
+  assert.equal(markdown.includes("/usr/local/fictional.txt"), false);
+  assert.equal(markdown.includes("C:\\private\\inventory"), false);
+  assert.equal(markdown.includes("\\\\server\\share\\secret"), false);
   assert.match(markdown, /&lt;details&gt;/u);
   assert.match(markdown, /\\n&#35;&#35; forged heading/u);
-  assert.match(markdown, /&#91;redacted-absolute-path&#93;/u);
+  assert.equal(
+    markdown.match(/&#91;redacted-absolute-path&#93;/gu)?.length,
+    3,
+  );
   assert.match(markdown, /`tick`/u);
   assert.match(markdown, /``/u);
 });
