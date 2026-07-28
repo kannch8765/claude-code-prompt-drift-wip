@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/prompt-drift/issue-report.schema.json",
+  "title": "Prompt drift issue report",
+  "description": "Machine-readable payload for a future renderer and Issue publisher.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "reportId",
+    "generatedAt",
+    "status",
+    "mutationsPerformed",
+    "upstream",
+    "summary",
+    "findings"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "contractVersion": {
+      "const": "1"
+    },
+    "reportId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "mutationsPerformed": {
+      "const": false
+    },
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ready",
+        "source",
+        "version",
+        "inventoryDigest"
+      ],
+      "properties": {
+        "ready": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inventoryDigest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "readinessReason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frozenTargets",
+        "upstreamTargets",
+        "findingCounts"
+      ],
+      "properties": {
+        "frozenTargets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "upstreamTargets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "findingCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "status",
+          "message"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/$defs/findingKind"
+          },
+          "status": {
+            "$ref": "#/$defs/status"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "customizationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targetId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "candidateTargetIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "expectedDigest": {
+            "$ref": "#/$defs/digest"
+          },
+          "actualDigest": {
+            "$ref": "#/$defs/digest"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "status": {
+      "enum": [
+        "SAFE_TO_REAPPLY",
+        "REVIEW_REQUIRED",
+        "BLOCKED",
+        "UPSTREAM_NOT_READY"
+      ]
+    },
+    "findingKind": {
+      "enum": [
+        "UNCHANGED",
+        "TARGET_CHANGED",
+        "TARGET_MISSING",
+        "POSSIBLE_RENAME",
+        "AMBIGUOUS_MATCH",
+        "NEW_UPSTREAM_PROMPT",
+        "UPSTREAM_NOT_READY"
+      ]
+    }
+  }
+}

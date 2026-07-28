@@ -1,0 +1,49 @@
+{
+  "fixtureVersion": "1",
+  "name": "ambiguous-match",
+  "synthetic": true,
+  "upstreamReady": true,
+  "frozen": [
+    {
+      "customizationId": "fictional.weathered-compass.extra-caution",
+      "targetId": "fictional.weathered-compass",
+      "displayName": "Weathered Compass",
+      "expectedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "aliases": [
+        "Old Brass Compass"
+      ]
+    }
+  ],
+  "upstream": [
+    {
+      "targetId": "fictional.north-compass",
+      "displayName": "North Compass",
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "aliases": [
+        "Weathered Compass"
+      ]
+    },
+    {
+      "targetId": "fictional.south-compass",
+      "displayName": "South Compass",
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "aliases": [
+        "Weathered Compass"
+      ]
+    }
+  ],
+  "expected": {
+    "status": "BLOCKED",
+    "findings": [
+      {
+        "kind": "AMBIGUOUS_MATCH",
+        "customizationId": "fictional.weathered-compass.extra-caution",
+        "targetId": "fictional.weathered-compass",
+        "candidateTargetIds": [
+          "fictional.north-compass",
+          "fictional.south-compass"
+        ]
+      }
+    ]
+  }
+}

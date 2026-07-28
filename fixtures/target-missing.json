@@ -1,0 +1,35 @@
+{
+  "fixtureVersion": "1",
+  "name": "target-missing",
+  "synthetic": true,
+  "upstreamReady": true,
+  "frozen": [
+    {
+      "customizationId": "fictional.weathered-compass.extra-caution",
+      "targetId": "fictional.weathered-compass",
+      "displayName": "Weathered Compass",
+      "expectedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "aliases": [
+        "Old Brass Compass"
+      ]
+    }
+  ],
+  "upstream": [
+    {
+      "targetId": "fictional.cloud-bell",
+      "displayName": "Cloud Bell",
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "aliases": []
+    }
+  ],
+  "expected": {
+    "status": "BLOCKED",
+    "findings": [
+      {
+        "kind": "TARGET_MISSING",
+        "customizationId": "fictional.weathered-compass.extra-caution",
+        "targetId": "fictional.weathered-compass"
+      }
+    ]
+  }
+}
