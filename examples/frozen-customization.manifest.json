@@ -1,0 +1,38 @@
+{
+  "$schema": "../schemas/frozen-manifest.schema.json",
+  "schemaVersion": "1",
+  "manifestId": "fictional.airship-demo",
+  "createdAt": "2026-01-01T00:00:00Z",
+  "synthetic": true,
+  "upstreamSnapshot": {
+    "source": "https://airship.example.invalid/prompts",
+    "version": "0.0.1-fictional",
+    "inventoryDigest": "sha256:40e30d574fb72a094ceae0d14945f7da67f120789dc99cc71949d22f364d99e2"
+  },
+  "customizations": [
+    {
+      "customizationId": "fictional.weathered-compass.extra-caution",
+      "target": {
+        "targetId": "fictional.weathered-compass",
+        "displayName": "Weathered Compass",
+        "expectedDigest": "sha256:76e7646d8849fc9e05e3f75d75231e2f02849ccc14a674ced7a7e3a955f6434f"
+      },
+      "artifacts": {
+        "basePath": "prompts/weathered-compass.base.txt",
+        "customizedPath": "prompts/weathered-compass.customized.txt",
+        "customizedDigest": "sha256:817d5e71a3970422ce5a2c078c1132fc86f79a2a8bff511399704055709af163"
+      },
+      "matchHints": {
+        "aliases": [
+          "Old Brass Compass"
+        ],
+        "tags": [
+          "airship",
+          "navigation",
+          "fictional"
+        ],
+        "ordinal": 1
+      }
+    }
+  ]
+}

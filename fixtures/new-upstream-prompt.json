@@ -1,0 +1,45 @@
+{
+  "fixtureVersion": "1",
+  "name": "new-upstream-prompt",
+  "synthetic": true,
+  "upstreamReady": true,
+  "frozen": [
+    {
+      "customizationId": "fictional.weathered-compass.extra-caution",
+      "targetId": "fictional.weathered-compass",
+      "displayName": "Weathered Compass",
+      "expectedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "aliases": [
+        "Old Brass Compass"
+      ]
+    }
+  ],
+  "upstream": [
+    {
+      "targetId": "fictional.weathered-compass",
+      "displayName": "Weathered Compass",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "aliases": []
+    },
+    {
+      "targetId": "fictional.moon-sail",
+      "displayName": "Moon Sail",
+      "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "aliases": []
+    }
+  ],
+  "expected": {
+    "status": "REVIEW_REQUIRED",
+    "findings": [
+      {
+        "kind": "UNCHANGED",
+        "customizationId": "fictional.weathered-compass.extra-caution",
+        "targetId": "fictional.weathered-compass"
+      },
+      {
+        "kind": "NEW_UPSTREAM_PROMPT",
+        "targetId": "fictional.moon-sail"
+      }
+    ]
+  }
+}

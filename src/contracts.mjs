@@ -1,0 +1,23 @@
+export const COMPATIBILITY_STATUSES = Object.freeze([
+  "SAFE_TO_REAPPLY",
+  "REVIEW_REQUIRED",
+  "BLOCKED",
+  "UPSTREAM_NOT_READY",
+]);
+
+export const FINDING_KINDS = Object.freeze([
+  "UNCHANGED",
+  "TARGET_CHANGED",
+  "TARGET_MISSING",
+  "POSSIBLE_RENAME",
+  "AMBIGUOUS_MATCH",
+  "NEW_UPSTREAM_PROMPT",
+  "UPSTREAM_NOT_READY",
+]);
+
+export const STATUS_PRECEDENCE = Object.freeze([
+  "SAFE_TO_REAPPLY",
+  "REVIEW_REQUIRED",
+  "BLOCKED",
+  "UPSTREAM_NOT_READY",
+]);
