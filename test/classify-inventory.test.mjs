@@ -109,6 +109,35 @@ test("exact target ID wins over display name and alias candidates", () => {
   assert.equal(result.findings[1].targetId, "fictional.rename-decoy");
 });
 
+test("a later frozen exact ID is reserved before earlier rename matching", () => {
+  const result = classify(
+    [
+      frozen({
+        targetId: "fictional.legacy-compass",
+        displayName: "Current Compass",
+      }),
+      frozen({
+        customizationId: "fictional.current-compass.customization",
+        targetId: "fictional.current-compass",
+        displayName: "Current Compass",
+      }),
+    ],
+    [
+      upstream({
+        targetId: "fictional.current-compass",
+        displayName: "Current Compass",
+      }),
+    ],
+  );
+
+  assert.deepEqual(result.findings.map(({ kind }) => kind), [
+    "TARGET_MISSING",
+    "UNCHANGED",
+  ]);
+  assert.equal(result.summary.findingCounts.POSSIBLE_RENAME, 0);
+  assert.equal(result.summary.findingCounts.NEW_UPSTREAM_PROMPT, 0);
+});
+
 test("changed exact target cannot be reclassified as a rename", () => {
   const result = classify(
     [frozen()],

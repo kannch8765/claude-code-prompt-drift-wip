@@ -94,12 +94,14 @@ network service, tag inference, or hidden semantic heuristic is used.
 
 ## Matching and consumption
 
-Frozen entries are processed in caller-provided order.
+Frozen entries are processed in caller-provided order, but every upstream ID
+that is an exact target for any frozen entry is reserved before rename matching.
+This prevents an earlier rename from consuming a later frozen target's exact ID.
 
 1. Exact `targetId` matching always wins over all name or alias candidates.
 2. An exact match is consumed and produces `UNCHANGED` or `TARGET_CHANGED`.
-3. Without an exact target, only currently unconsumed upstream entries are
-   considered as rename candidates.
+3. Without an exact target, only upstream entries that are neither reserved for
+   an exact match nor already consumed are considered as rename candidates.
 4. One candidate produces `POSSIBLE_RENAME` and consumes that upstream entry.
 5. Multiple candidates produce `AMBIGUOUS_MATCH`; none of those candidates are
    consumed.

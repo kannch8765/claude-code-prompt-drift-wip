@@ -54,15 +54,17 @@ Classification is deterministic:
 
 1. validate required shapes, fields, digests, and unique IDs;
 2. short-circuit a valid non-ready snapshot to `UPSTREAM_NOT_READY`;
-3. match exact stable IDs before any display-name or alias candidate;
-4. compare digests for exact targets;
-5. evaluate only NFKC-normalized, trimmed, case-folded, whitespace-collapsed
+3. reserve every upstream ID that exactly matches any frozen target before
+   evaluating rename candidates;
+4. match exact stable IDs before any display-name or alias candidate;
+5. compare digests for exact targets;
+6. evaluate only NFKC-normalized, trimmed, case-folded, whitespace-collapsed
    declared labels and aliases for absent IDs;
-6. consume exact matches and unique rename candidates only;
-7. leave ambiguous candidates unconsumed;
-8. emit frozen-target findings in frozen input order;
-9. emit every unconsumed upstream record in upstream input order;
-10. fold finding severities using the public compatibility precedence.
+7. consume exact matches and unique rename candidates only;
+8. leave ambiguous candidates unconsumed;
+9. emit frozen-target findings in frozen input order;
+10. emit every unconsumed upstream record in upstream input order;
+11. fold finding severities using the public compatibility precedence.
 
 No fuzzy threshold, embedding, hosted model, edit distance, locale collation, or
 hidden heuristic belongs in the Task 002 engine.

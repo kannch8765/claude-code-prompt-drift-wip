@@ -303,6 +303,11 @@ export function classifyInventory(input) {
   const upstreamByTargetId = new Map(
     upstreamEntries.map((entry) => [entry.targetId, entry]),
   );
+  const reservedExactTargetIds = new Set(
+    frozenEntries
+      .filter((entry) => upstreamByTargetId.has(entry.targetId))
+      .map((entry) => entry.targetId),
+  );
   const consumedUpstreamTargetIds = new Set();
   const findings = [];
 
@@ -335,6 +340,7 @@ export function classifyInventory(input) {
 
     const candidates = upstreamEntries.filter(
       (entry) =>
+        !reservedExactTargetIds.has(entry.targetId) &&
         !consumedUpstreamTargetIds.has(entry.targetId) &&
         hasMatchKeyIntersection(frozenEntry.matchKeys, entry.matchKeys),
     );
