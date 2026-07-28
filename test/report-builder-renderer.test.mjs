@@ -327,6 +327,17 @@ test("report and metadata identifiers reject controls and path-like values", () 
     "INVALID_VALUE",
     "report.baseline.version",
   );
+  assertInputError(
+    () =>
+      build(classification, {
+        baseline: {
+          ...baselineMetadata,
+          source: "https://airship.example.invalid/%2e%2e/private",
+        },
+      }),
+    "INVALID_VALUE",
+    "report.baseline.source",
+  );
   const notReady = classify([frozen()], [], false);
   assertInputError(
     () =>
@@ -398,6 +409,22 @@ test("builder output satisfies the published issue report schema boundaries", as
   assertPublishedSchemaShape(report, schema);
   assert.ok(schema.required.includes("baseline"));
   assert.deepEqual(schema.properties.summary.properties.findingCounts.required, FINDING_KINDS);
+  assert.deepEqual(
+    schema.$defs.finding.oneOf.map((variant) => variant.properties.kind.const),
+    FINDING_KINDS,
+  );
+  assert.deepEqual(
+    schema.$defs.finding.oneOf.map((variant) => variant.properties.status.const),
+    [
+      "SAFE_TO_REAPPLY",
+      "REVIEW_REQUIRED",
+      "BLOCKED",
+      "REVIEW_REQUIRED",
+      "BLOCKED",
+      "REVIEW_REQUIRED",
+      "UPSTREAM_NOT_READY",
+    ],
+  );
 });
 
 test("all committed fixtures execute classify → build → render", async (t) => {
