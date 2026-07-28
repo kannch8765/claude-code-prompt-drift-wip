@@ -43,6 +43,14 @@
           "fictional.north-compass",
           "fictional.south-compass"
         ]
+      },
+      {
+        "kind": "NEW_UPSTREAM_PROMPT",
+        "targetId": "fictional.north-compass"
+      },
+      {
+        "kind": "NEW_UPSTREAM_PROMPT",
+        "targetId": "fictional.south-compass"
       }
     ]
   }

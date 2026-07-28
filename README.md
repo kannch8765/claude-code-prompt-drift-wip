@@ -6,9 +6,10 @@ Claude Code Prompt Drift is a personal CI watcher for detecting changes in an
 upstream prompt inventory and deciding whether frozen customizations are still
 safe to reapply.
 
-This repository starts with a deliberately public, synthetic contract. It does
-not contain genuine Claude Code prompts, copied prompt names, private
-customizations, or a working integration with any patching tool.
+This repository contains a deliberately public, synthetic contract and a pure,
+deterministic comparison engine. It does not contain genuine Claude Code
+prompts, copied prompt names, private customizations, or a working integration
+with any patching tool.
 
 ## What this project is for
 
@@ -16,7 +17,7 @@ The intended workflow is:
 
 1. A user supplies a frozen customization manifest and its local artifacts.
 2. A future collector supplies a normalized upstream inventory.
-3. A deterministic comparison engine classifies every target and any new
+3. `classifyInventory()` classifies every frozen target and any unmatched
    upstream entries.
 4. A report is produced with one of four compatibility states:
    `SAFE_TO_REAPPLY`, `REVIEW_REQUIRED`, `BLOCKED`, or
@@ -24,9 +25,25 @@ The intended workflow is:
 5. A future publisher may render that report into a GitHub Issue after an
    explicit review boundary.
 
-Task 001 defines only the public data contracts, fixtures, documentation, and
-test foundation. It does not acquire prompts, compare a real corpus, apply
-customizations, or mutate Issues.
+## Comparison API
+
+```js
+import { classifyInventory } from "./src/classify-inventory.mjs";
+
+const result = classifyInventory({
+  upstreamReady,
+  frozenEntries,
+  upstreamEntries,
+});
+```
+
+The function performs no file, network, clock, locale-service, model, or GitHub
+I/O. It returns `{ status, findings, summary }` and never mutates the supplied
+objects or arrays. Invalid input throws `ClassificationInputError` with stable
+`code` and `path` fields.
+
+See `docs/compatibility-model.md` for the exact input shape, normalization,
+matching, consumption, ordering, and error contracts.
 
 ## Unofficial project
 
@@ -44,7 +61,7 @@ The public repository must remain safe to inspect and fork:
 - no installation or execution of Claude Code;
 - no automatic patch application;
 - no credentials, account data, workstation paths, or runtime session data;
-- no GitHub Issue mutation in the contract and fixture layer.
+- no GitHub Issue mutation in the contract, fixture, or classifier layer.
 
 All examples and fixtures use fictional airship-navigation prompts, reserved
 `.invalid` sources, and IDs beginning with `fictional.`. Tests enforce this
@@ -53,13 +70,14 @@ synthetic-only boundary.
 ## Repository map
 
 - `docs/architecture.md` — components, trust boundaries, and staged delivery.
-- `docs/compatibility-model.md` — statuses, findings, and precedence rules.
+- `docs/compatibility-model.md` — statuses and deterministic classification.
 - `schemas/frozen-manifest.schema.json` — public manifest contract.
 - `schemas/issue-report.schema.json` — future Issue report payload contract.
 - `examples/` — fictional prompt artifacts, manifest, and report.
-- `fixtures/` — deterministic synthetic comparison cases.
+- `fixtures/` — executable deterministic comparison cases.
 - `src/contracts.mjs` — shared status and finding constants.
-- `test/` — contract, fixture, digest, and synthetic-content tests.
+- `src/classify-inventory.mjs` — pure comparison and classification engine.
+- `test/` — contract, fixture, classifier, digest, and synthetic-content tests.
 
 ## Development
 
@@ -79,15 +97,14 @@ npm test
 ```
 
 The project intentionally has no third-party runtime or development
-dependencies at this stage. The lockfile is still committed so CI and local
-execution use the same install contract.
+dependencies. The lockfile is committed so CI and local execution use the same
+install contract.
 
 ## Current scope
 
-Task 001 is the public-contract foundation. The next task should implement a
-pure, deterministic comparison/classification engine over the committed
-fixtures. Upstream acquisition, real integrations, patch application, and Issue
-mutation remain separate later stages.
+Task 002 implements deterministic local comparison and classification. Upstream
+acquisition, real integrations, patch application, report metadata generation,
+GitHub Issue rendering, and Issue mutation remain separate later stages.
 
 ## License
 

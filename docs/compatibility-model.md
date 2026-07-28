@@ -20,15 +20,98 @@ a newly introduced upstream prompt.
 ### `BLOCKED`
 
 A safe target mapping cannot be established. Examples include a missing target
-with no candidate, multiple plausible candidates, malformed frozen metadata, or
-a digest contract violation.
+with no candidate or multiple plausible candidates.
 
-No customization should be reapplied from a `BLOCKED` report.
+Malformed classifier input does not produce a compatibility status. It throws a
+stable `ClassificationInputError` before any result can be mistaken for
+`SAFE_TO_REAPPLY`.
 
 ### `UPSTREAM_NOT_READY`
 
 The upstream snapshot is missing, partial, unavailable, or not trusted enough
 to compare. This state is about input readiness rather than compatibility.
+
+## Public classifier input
+
+`classifyInventory()` accepts one plain object:
+
+```js
+{
+  upstreamReady: boolean,
+  frozenEntries: [
+    {
+      customizationId: string,
+      targetId: string,
+      displayName: string,
+      expectedDigest: "sha256:<64 lowercase hex characters>",
+      aliases?: string[],
+    },
+  ],
+  upstreamEntries: [
+    {
+      targetId: string,
+      displayName: string,
+      digest: "sha256:<64 lowercase hex characters>",
+      aliases?: string[],
+    },
+  ],
+}
+```
+
+Aliases are optional and behave as empty arrays when omitted. IDs are exact,
+case-sensitive identifiers. Duplicate frozen `customizationId`, duplicate
+frozen `targetId`, and duplicate upstream `targetId` values are rejected.
+Required fields, plain-object shapes, arrays, non-empty strings, and digests are
+validated before classification.
+
+Invalid input throws `ClassificationInputError`. Its stable public fields are:
+
+```js
+{
+  name: "ClassificationInputError",
+  code: string,
+  path: string,
+  message: string,
+}
+```
+
+Input validation precedes readiness classification. A valid input with
+`upstreamReady: false` then short-circuits to one `UPSTREAM_NOT_READY` finding
+and produces no digest, rename, missing, or new-upstream findings.
+
+## String normalization
+
+Rename candidates use only declared display names and aliases. Every compared
+string is transformed in this exact order:
+
+1. Unicode `NFKC` normalization;
+2. trim leading and trailing whitespace;
+3. locale-independent JavaScript `toLowerCase()` case folding;
+4. replace each run of Unicode whitespace with one ASCII space.
+
+No locale-aware collation, fuzzy threshold, edit distance, embedding, model,
+network service, tag inference, or hidden semantic heuristic is used.
+
+## Matching and consumption
+
+Frozen entries are processed in caller-provided order, but every upstream ID
+that is an exact target for any frozen entry is reserved before rename matching.
+This prevents an earlier rename from consuming a later frozen target's exact ID.
+
+1. Exact `targetId` matching always wins over all name or alias candidates.
+2. An exact match is consumed and produces `UNCHANGED` or `TARGET_CHANGED`.
+3. Without an exact target, only upstream entries that are neither reserved for
+   an exact match nor already consumed are considered as rename candidates.
+4. One candidate produces `POSSIBLE_RENAME` and consumes that upstream entry.
+5. Multiple candidates produce `AMBIGUOUS_MATCH`; none of those candidates are
+   consumed.
+6. No candidate produces `TARGET_MISSING`.
+7. After all frozen entries, every still-unconsumed upstream entry produces
+   `NEW_UPSTREAM_PROMPT` in upstream input order.
+
+Because ambiguous candidates are not consumed, they are also emitted as
+`NEW_UPSTREAM_PROMPT` after the frozen-target finding. This closes the Task 001
+fixture ambiguity and ensures no unmatched upstream record disappears.
 
 ## Finding kinds
 
@@ -53,27 +136,39 @@ UPSTREAM_NOT_READY
   > SAFE_TO_REAPPLY
 ```
 
-`UPSTREAM_NOT_READY` short-circuits classification because findings derived
-from incomplete input would be misleading. Otherwise the most severe finding
-sets the report status.
+`UPSTREAM_NOT_READY` short-circuits classification after validation. Otherwise
+the most severe finding sets the result status.
 
-## Matching principles
+## Stable output
 
-- Exact stable identity is stronger than labels or aliases.
-- Content equality is represented by a declared digest, not a text excerpt.
-- A changed digest is never automatically accepted.
-- A possible rename must have exactly one deterministic candidate.
-- Ambiguity always fails closed.
-- New upstream records are reported even when every frozen target is unchanged.
-- No model-generated semantic guess may produce `SAFE_TO_REAPPLY`.
+The result shape is:
 
-## Report invariants
+```js
+{
+  status,
+  findings,
+  summary: {
+    frozenTargets,
+    upstreamTargets,
+    findingCounts,
+  },
+}
+```
 
-A valid report:
+Every finding has `kind`, its minimum `status`, and a stable `message`.
+Applicable findings also include `customizationId`, `targetId`,
+`candidateTargetIds`, `expectedDigest`, and `actualDigest`. Candidate IDs follow
+upstream input order. Frozen-target findings follow frozen input order; all
+`NEW_UPSTREAM_PROMPT` findings follow afterward in upstream input order.
 
-- declares its contract version;
-- records whether upstream input was ready;
-- contains one of the four exact statuses;
-- contains machine-readable findings and summary counts;
-- declares that Task 001 performed no mutation;
-- does not embed genuine prompt content.
+`findingCounts` contains every public finding kind in contract order, including
+zero counts. The classifier allocates a new result and does not mutate caller
+arrays or objects. Equal valid inputs produce deep-equal results without using
+the clock, filesystem, network, locale services, or process-global ordering.
+
+## Task 003 handoff
+
+Task 003 may add report metadata and render or map this stable result into
+`schemas/issue-report.schema.json`. It should preserve finding order and fields,
+add only report ID, timestamp, upstream source metadata, contract metadata, and
+`mutationsPerformed: false`, and keep Issue mutation outside the renderer.
