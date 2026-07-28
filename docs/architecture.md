@@ -2,41 +2,38 @@
 
 ## Purpose
 
-Claude Code Prompt Drift is designed as a small, auditable pipeline that turns
-two user-controlled inputs into a deterministic compatibility report:
+Claude Code Prompt Drift is a small, auditable pipeline that turns two
+user-controlled inputs into a deterministic compatibility report:
 
 - a frozen customization manifest plus local artifacts;
 - a normalized snapshot of an upstream prompt inventory.
 
-Task 001 established the public contracts. Task 002 adds the local comparison
-engine without adding acquisition, patching, publishing, or remote mutation.
+Task 001 established public contracts. Task 002 added deterministic local
+classification. Task 003 adds deterministic report construction and safe
+Markdown rendering without acquisition, patching, publishing, or remote
+mutation.
 
 ## Component boundaries
 
-### 1. Upstream acquisition — future
+### 1. Upstream acquisition — future and separate
 
-A collector will obtain an upstream inventory outside this repository's
-contract layer. Acquisition is explicitly untrusted until it has completed,
-been normalized, and supplied a stable snapshot identifier and digest.
+A collector will obtain an upstream inventory outside the report pipeline.
+Acquisition remains untrusted until it has completed, been normalized, and
+supplied a stable source identifier, version, and inventory digest.
 
 The collector must not silently fall back to partial data. Incomplete,
 unavailable, or unverifiable input produces `UPSTREAM_NOT_READY`.
 
-### 2. Normalization — future
+### 2. Normalization — future and separate
 
-A normalizer will convert collector-specific records into a small common shape:
-
-- stable target ID when available;
-- display label;
-- content digest;
-- optional aliases and deterministic matching hints;
-- source ordinal or other non-secret inventory metadata.
-
-Normalization must not invent missing content or use a model to guess identity.
+A normalizer will convert collector-specific records into a common shape with
+stable target IDs, display labels, digests, optional aliases, and deterministic
+matching hints. It must not invent missing content or use a model to guess
+identity.
 
 ### 3. Comparison and classification — Task 002
 
-`src/classify-inventory.mjs` exports the pure public entry point:
+`src/classify-inventory.mjs` exports:
 
 ```js
 classifyInventory({
@@ -46,86 +43,107 @@ classifyInventory({
 })
 ```
 
-The module validates its complete public input contract and throws
-`ClassificationInputError` for malformed input. It performs no hidden I/O and
-never mutates caller data.
+The classifier validates shapes, digests, and unique IDs; reserves exact target
+IDs; performs exact matching before declared name or alias matching; consumes
+only exact matches and unique rename candidates; preserves frozen and upstream
+input order; and folds public finding severities into one compatibility status.
 
-Classification is deterministic:
+It performs no hidden I/O and never mutates caller data. No fuzzy threshold,
+embedding, hosted model, edit distance, locale collation, or hidden heuristic is
+part of classification.
 
-1. validate required shapes, fields, digests, and unique IDs;
-2. short-circuit a valid non-ready snapshot to `UPSTREAM_NOT_READY`;
-3. reserve every upstream ID that exactly matches any frozen target before
-   evaluating rename candidates;
-4. match exact stable IDs before any display-name or alias candidate;
-5. compare digests for exact targets;
-6. evaluate only NFKC-normalized, trimmed, case-folded, whitespace-collapsed
-   declared labels and aliases for absent IDs;
-7. consume exact matches and unique rename candidates only;
-8. leave ambiguous candidates unconsumed;
-9. emit frozen-target findings in frozen input order;
-10. emit every unconsumed upstream record in upstream input order;
-11. fold finding severities using the public compatibility precedence.
+### 4. Report builder — Task 003
 
-No fuzzy threshold, embedding, hosted model, edit distance, locale collation, or
-hidden heuristic belongs in the Task 002 engine.
+`src/build-issue-report.mjs` exports:
 
-### 4. Report contract — Task 001
+```js
+buildIssueReport({
+  classification,
+  reportId,
+  generatedAt,
+  contractVersion,
+  baseline,
+  upstream,
+})
+```
 
-The classifier returns `{ status, findings, summary }`. Its finding fields and
-summary counts are directly mappable into
-`schemas/issue-report.schema.json`, while report ID, timestamps, contract
-metadata, and upstream source metadata remain the responsibility of a later
-report builder.
+The builder is a pure boundary between classification and presentation. It:
 
-The report contract is intentionally independent of GitHub's Issue API. A
-renderer can later turn the payload into Markdown without changing the
-classification result.
+- preserves `classification.status` exactly;
+- preserves finding content and order exactly;
+- preserves summary and all finding counts exactly;
+- requires caller-supplied report ID and canonical UTC timestamp;
+- adds bounded baseline and upstream source, version, and digest metadata;
+- fixes `mutationsPerformed` to `false`;
+- validates readiness, count closure, finding shape, and status consistency;
+- returns newly allocated nested objects and arrays;
+- rejects unknown fields so prompt bodies and artifact paths cannot enter the
+  public report accidentally.
 
-### 5. Issue publisher — future
+It does not read the clock, randomness, environment, filesystem, network, model,
+or GitHub API.
 
-A publisher may create or update an Issue only after it receives a valid report
-and explicit repository configuration. It should use least-privilege
-permissions, preserve a stable marker, and fail before mutation when identity is
-ambiguous.
+### 5. Markdown renderer — Task 003
 
-No publisher or Issue mutation exists in Task 002.
+`src/render-issue-markdown.mjs` exports:
 
-### 6. Customization application — future and separate
+```js
+renderIssueMarkdown(report)
+```
 
-Applying a customization is deliberately outside the watcher. A report may say
-that reapplication appears safe, but the watcher does not execute a patching
-tool or modify an installed binary.
+The renderer validates and clones the report before rendering. It emits one
+fixed public marker, a deterministic summary, all finding counts, and stable
+sections for blocked, review-required, new-upstream, safe, and not-ready
+findings. Findings retain classifier order within each public section.
+
+Every report string is untrusted. The renderer flattens line separators,
+neutralizes raw HTML and comments, uses dynamically sized inline-code fences for
+backticks, prevents Markdown links, headings, and tables from escaping their
+field, and redacts local absolute path-like text. It renders only known report
+fields and never reads an `artifactPath` or prompt body.
+
+The output is compatible with a future GitHub Issue body, but this component has
+no GitHub token, repository configuration, or mutation permission.
+
+### 6. Issue publisher — Task 004
+
+Task 004 may add a publisher that accepts a validated report and rendered body.
+The publisher must remain a separate boundary with least-privilege Issue write
+permissions, stable Issue identity, fail-before-mutation behavior, and explicit
+handling for ambiguous or duplicate markers.
+
+Task 004 must not move the clock, network, GitHub API, or mutation behavior into
+`buildIssueReport()` or `renderIssueMarkdown()`.
+
+### 7. Customization application — future and separate
+
+Applying a customization is outside the watcher. A report may say that
+reapplication appears safe, but neither the report builder nor renderer executes
+`tweakcc`, another patching tool, or modifies an installed binary. Acquisition
+and application integrations remain independent boundaries.
 
 ## Trust boundaries
 
 The system treats these as separate trust zones:
 
-- **Public contract and engine:** schemas, documentation, synthetic examples,
-  fixtures, classifier, and tests.
+- **Public local processing:** schemas, synthetic examples, fixtures,
+  classifier, builder, renderer, and tests.
 - **User-local material:** genuine frozen prompts and customization artifacts.
 - **Acquired upstream material:** versioned input whose readiness must be
   proven.
-- **Remote mutation:** GitHub Issue writes, disabled until a later stage.
+- **Remote mutation:** GitHub Issue writes, reserved for Task 004.
+- **Customization application:** a later integration outside report generation.
 
-Genuine prompt content should remain in user-controlled storage. Public tests
-must stay synthetic and must never require a private repository.
+Genuine prompt content remains in user-controlled storage. Public tests stay
+synthetic and never require a private repository.
 
 ## Determinism and auditability
 
-For the same normalized inputs and contract version, the engine produces a
-deep-equal result with a fixed key and finding order. Every finding identifies
-the rule through a stable kind, minimum status, and message. Overall status is a
-severity fold, not an opaque score.
+For the same explicit normalized inputs, the classifier result, report object,
+`JSON.stringify(report)`, and Markdown output are byte-for-byte stable. Key and
+section order are fixed by public contract order rather than locale,
+filesystem enumeration, process environment, or current time.
 
-The engine imports no filesystem, network, clock, locale-service, GitHub, model,
-or process-order source. All fixture acceptance tests execute locally.
-
-## Task 003 handoff
-
-Task 003 can consume the classifier result without reimplementing matching:
-
-- preserve `status`, `findings`, `summary`, and their order;
-- add report ID, generated timestamp, contract version, and upstream metadata;
-- map the result into `schemas/issue-report.schema.json`;
-- render Markdown or an Issue payload as a separate pure step;
-- keep GitHub Issue mutation and permissions outside report generation.
+All report metadata that can vary is supplied explicitly by the caller. The
+builder and renderer import no filesystem, network, clock, locale-service,
+GitHub, model, or process-order source.
