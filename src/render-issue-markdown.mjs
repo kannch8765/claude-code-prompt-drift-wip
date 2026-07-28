@@ -40,7 +40,7 @@ const SECTION_RULES = Object.freeze([
 function redactAbsolutePaths(value) {
   return value
     .replace(
-      /(^|[\s("'`])(?:[A-Za-z]:[\\/]|\/(?:home|Users|private|tmp|var|etc|opt|root|mnt|srv)\/)[^\s<>()\[\]{}]*/gu,
+      /(^|[\s("'`])(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]|\/(?!\/))[^\s<>()\[\]{}]*/gu,
       "$1[redacted-absolute-path]",
     )
     .replace(/file:\/\/[^\s<>()\[\]{}]*/giu, "[redacted-file-url]");
