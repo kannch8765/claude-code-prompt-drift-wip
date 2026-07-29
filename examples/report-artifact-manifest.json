@@ -1,0 +1,21 @@
+{
+  "contractVersion": "1",
+  "artifactName": "claude-code-prompt-drift-report-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "reportId": "fictional.airship-run-0005",
+  "files": [
+    {
+      "name": "issue-report.json",
+      "mediaType": "application/json",
+      "utf8Bytes": 2048,
+      "utf16CodeUnits": 2048,
+      "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "issue-report.md",
+      "mediaType": "text/markdown",
+      "utf8Bytes": 4096,
+      "utf16CodeUnits": 4096,
+      "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
+}

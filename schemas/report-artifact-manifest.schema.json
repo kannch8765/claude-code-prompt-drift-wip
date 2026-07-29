@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/prompt-drift/report-artifact-manifest.schema.json",
+  "title": "Prompt drift report artifact manifest",
+  "description": "Deterministic descriptor for the two complete report payload files in a local artifact package.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "artifactName",
+    "reportId",
+    "files"
+  ],
+  "properties": {
+    "contractVersion": {
+      "const": "1"
+    },
+    "artifactName": {
+      "type": "string",
+      "pattern": "^claude-code-prompt-drift-report-[0-9a-f]{64}$"
+    },
+    "reportId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^(?![A-Za-z]:)[A-Za-z0-9](?:[A-Za-z0-9._:@+-]{0,126}[A-Za-z0-9])?$"
+    },
+    "files": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/reportJson"
+        },
+        {
+          "$ref": "#/$defs/reportMarkdown"
+        }
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "nonNegativeSafeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "reportJson": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "mediaType",
+        "utf8Bytes",
+        "utf16CodeUnits",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "const": "issue-report.json"
+        },
+        "mediaType": {
+          "const": "application/json"
+        },
+        "utf8Bytes": {
+          "$ref": "#/$defs/nonNegativeSafeInteger"
+        },
+        "utf16CodeUnits": {
+          "$ref": "#/$defs/nonNegativeSafeInteger"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "reportMarkdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "mediaType",
+        "utf8Bytes",
+        "utf16CodeUnits",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "const": "issue-report.md"
+        },
+        "mediaType": {
+          "const": "text/markdown"
+        },
+        "utf8Bytes": {
+          "$ref": "#/$defs/nonNegativeSafeInteger"
+        },
+        "utf16CodeUnits": {
+          "$ref": "#/$defs/nonNegativeSafeInteger"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  }
+}
