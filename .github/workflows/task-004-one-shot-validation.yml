@@ -1,0 +1,44 @@
+name: Task 004 one-shot validation
+
+on:
+  push:
+    branches:
+      - validation/task-004-one-shot-ci
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout fixed certification commit
+        uses: actions/checkout@v4
+        with:
+          ref: 940008b10488e369393d5e82b5feac9b09d922d7
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify fixed HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='940008b10488e369393d5e82b5feac9b09d922d7'
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$expected" "$actual"
+          test "$actual" = "$expected"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Show Node.js version
+        run: node --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run complete checks
+        run: npm run check
