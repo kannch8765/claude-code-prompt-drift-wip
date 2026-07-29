@@ -6,77 +6,39 @@
 
 All frozen targets were found by exact identity, their upstream digests are
 unchanged, no unmatched upstream records require inventory review, and the
-upstream snapshot is ready.
-
-This is a compatibility judgment, not permission to execute a patch
-automatically.
+upstream snapshot is ready. This is a compatibility judgment, not permission to
+execute a patch automatically.
 
 ### `REVIEW_REQUIRED`
 
 The inputs are usable, but a human should inspect at least one non-blocking
-change. Examples include a changed target body, one unique possible rename, or
-a newly introduced upstream prompt.
+change, such as a changed target body, one unique possible rename, or a newly
+introduced upstream prompt.
 
 ### `BLOCKED`
 
-A safe target mapping cannot be established. Examples include a missing target
-with no candidate or multiple plausible candidates.
+A safe target mapping cannot be established, such as when a target is missing or
+multiple plausible candidates remain.
 
 ### `UPSTREAM_NOT_READY`
 
-The upstream snapshot is missing, partial, unavailable, or not trusted enough
-to compare. This state is about input readiness rather than compatibility.
+The upstream snapshot is missing, partial, unavailable, or not trusted enough to
+compare. This state is about input readiness rather than compatibility.
 
-Malformed classifier or report input throws a stable typed error before any
-result can be mistaken for a compatibility decision.
+Malformed classifier, report, renderer, planner, or publisher input throws a
+stable typed error before it can be mistaken for a compatibility decision.
 
-## Public classifier input
+## Classifier contract
 
-`classifyInventory()` accepts one plain object:
+`classifyInventory()` accepts explicit normalized frozen and upstream entries.
+Exact target identity wins over all name or alias candidates. Rename comparison
+uses only declared strings normalized with Unicode NFKC, trimming,
+locale-independent lowercase conversion, and whitespace collapse. It uses no
+fuzzy matching, embeddings, model, or network service.
 
-```js
-{
-  upstreamReady: boolean,
-  frozenEntries: [
-    {
-      customizationId: string,
-      targetId: string,
-      displayName: string,
-      expectedDigest: "sha256:<64 lowercase hex characters>",
-      aliases?: string[],
-    },
-  ],
-  upstreamEntries: [
-    {
-      targetId: string,
-      displayName: string,
-      digest: "sha256:<64 lowercase hex characters>",
-      aliases?: string[],
-    },
-  ],
-}
-```
-
-Aliases are optional and behave as empty arrays when omitted. IDs are exact,
-case-sensitive identifiers. Duplicate frozen customization IDs, duplicate
-frozen target IDs, and duplicate upstream target IDs are rejected.
-
-## Matching and consumption
-
-Frozen entries are processed in caller-provided order, but every upstream ID
-that is an exact target for any frozen entry is reserved before rename matching.
-
-1. Exact target ID matching always wins.
-2. An exact match produces `UNCHANGED` or `TARGET_CHANGED`.
-3. One declared normalized name or alias candidate produces `POSSIBLE_RENAME`.
-4. Multiple candidates produce `AMBIGUOUS_MATCH` and remain unconsumed.
-5. No candidate produces `TARGET_MISSING`.
-6. Every unconsumed upstream entry produces `NEW_UPSTREAM_PROMPT` in upstream
-   input order.
-
-Name and alias comparison uses Unicode NFKC normalization, trimming,
-locale-independent lowercase conversion, and whitespace collapse. It does not
-use fuzzy matching, embeddings, a model, or network services.
+Every exact match is consumed. One unique declared rename candidate is consumed.
+Ambiguous candidates remain unconsumed, and every remaining upstream entry is
+reported in upstream order.
 
 ## Finding kinds and public sections
 
@@ -101,70 +63,19 @@ UPSTREAM_NOT_READY
 
 ## Stable classifier output
 
-The classifier returns:
+The classifier returns `{ status, findings, summary }`. `findingCounts` contains
+every public finding kind in contract order, including zero counts. Frozen-target
+findings follow frozen input order; new-upstream findings follow afterward in
+upstream input order.
 
-```js
-{
-  status,
-  findings,
-  summary: {
-    frozenTargets,
-    upstreamTargets,
-    findingCounts,
-  },
-}
-```
+## Report contract
 
-`findingCounts` contains every public finding kind in contract order, including
-zero counts. Frozen-target findings follow frozen input order; new-upstream
-findings follow afterward in upstream input order.
+`buildIssueReport()` accepts the classifier output plus explicit report ID,
+canonical UTC timestamp, contract version, baseline metadata, and upstream
+metadata. It rejects unknown fields, malformed finding shapes, status mismatch,
+duplicate candidates, incomplete count maps, and count mismatches.
 
-## Public report builder input
-
-`buildIssueReport()` accepts the classifier output plus explicit metadata:
-
-```js
-{
-  classification,
-  reportId,
-  generatedAt,
-  contractVersion: "1",
-  baseline: {
-    source,
-    version,
-    inventoryDigest,
-  },
-  upstream: {
-    ready,
-    source,
-    version,
-    inventoryDigest,
-    readinessReason?,
-  },
-}
-```
-
-`generatedAt` must be a real canonical UTC instant with milliseconds, such as
-`2026-07-29T03:17:00.000Z`. The function never generates a timestamp or report
-ID internally.
-
-Report IDs, identities, versions, and source identifiers have explicit length
-and character boundaries. They reject controls, line separators, backslashes,
-local absolute paths, drive prefixes, and dot-segment path values. A source may
-be a bounded portable token or a canonical `https` source identifier.
-
-A ready upstream requires a version and inventory digest and forbids a readiness
-reason. A non-ready upstream requires null version and digest plus a bounded
-reason. Readiness must agree with the classifier status.
-
-The builder rejects unknown fields, malformed finding shapes, status mismatch,
-duplicate candidates, incomplete finding-count maps, and counts that do not
-match the findings. It does not change classifier content or order and returns a
-deep copy.
-
-## Machine-readable report
-
-The output conforms to `schemas/issue-report.schema.json` and contains:
+The machine-readable output contains:
 
 ```js
 {
@@ -180,8 +91,10 @@ The output conforms to `schemas/issue-report.schema.json` and contains:
 }
 ```
 
-The key order above is stable. Equal explicit input produces byte-for-byte equal
-`JSON.stringify()` output.
+`mutationsPerformed: false` is immutable and means report construction performed
+no mutation. A later Task 004 publisher result uses its own
+`mutationPerformed: boolean` field to describe whether that invocation issued a
+remote write.
 
 ## Markdown safety contract
 
@@ -189,29 +102,108 @@ The key order above is stable. Equal explicit input produces byte-for-byte equal
 renderer-owned marker and fixed public headings. It never creates or updates a
 GitHub Issue.
 
-All report strings are untrusted. The renderer:
+All report strings are untrusted. The renderer flattens line separators,
+contains values in dynamically fenced inline code, neutralizes raw HTML and
+Markdown injection, prevents user data from reproducing the fixed marker,
+renders only known public fields, rejects prompt-body and artifact-path fields,
+and redacts local absolute path-like text.
 
-- flattens CR, LF, and Unicode line separators before insertion;
-- contains values in dynamically fenced inline code;
-- neutralizes raw HTML, comments, and folding tags;
-- prevents link, heading, table, and backtick injection;
-- prevents user data from reproducing the fixed marker;
-- emits no arbitrary clickable external links;
-- renders only identity, digest, metadata, counts, and fixed messages;
-- rejects prompt-body and artifact-path fields rather than reading them;
-- redacts local absolute path-like text;
-- preserves finding order within stable public sections.
+## Issue publication identity
 
-The final body states that no automatic apply or remote mutation occurred.
+The publisher owns this fixed first-line marker:
 
-## Task 004 handoff
+```text
+<!-- claude-code-prompt-drift:rolling-issue:v1 -->
+```
 
-Task 004 may implement an Issue publisher that consumes the validated report and
-rendered Markdown. It owns GitHub authentication, repository configuration,
-Issue lookup, marker identity, create/update behavior, and fail-before-mutation
-checks.
+The complete desired Issue body is exactly:
 
-The publisher must not reclassify prompts, regenerate report metadata silently,
-read artifact files through the renderer, or add GitHub permissions to the
-builder and renderer. Upstream acquisition and any `tweakcc` customization
-application remain separate integrations.
+```text
+<publisher marker>
+
+<complete renderIssueMarkdown(report) output>
+```
+
+The Task 003 report marker remains present exactly once. The publisher marker
+also occurs exactly once and cannot be supplied through a title, report field,
+or Markdown argument because Markdown must match the renderer byte-for-byte.
+
+Titles are fixed by status:
+
+```text
+Claude Code Prompt Drift — SAFE_TO_REAPPLY
+Claude Code Prompt Drift — REVIEW_REQUIRED
+Claude Code Prompt Drift — BLOCKED
+Claude Code Prompt Drift — UPSTREAM_NOT_READY
+```
+
+No current time, locale, or random value appears in the title or body.
+
+## Publication planner
+
+`planIssuePublication({ report, markdown, issues })` validates and clones the
+report, verifies the exact Markdown identity, and validates normalized Issue
+records without modifying caller data.
+
+Only open non-Pull-Request records participate in identity. A canonical candidate
+must have the exact publisher marker on its first line and exactly once in its
+body. Marker text later in an ordinary body is not an identity. A canonical
+prefix with a repeated marker fails closed.
+
+The deterministic rules are:
+
+- zero candidates: `CREATE`;
+- one candidate with different title or body: `UPDATE`;
+- one byte-identical candidate: `NOOP`;
+- more than one candidate: `AMBIGUOUS_ISSUE_IDENTITY`.
+
+## Effectful publisher
+
+`publishGitHubIssue({ repository, report, markdown, client })` accepts only a
+strict `owner/repository` identifier. URLs, empty segments, dot segments,
+backslashes, queries, fragments, and percent-encoded forms are rejected.
+
+The injected client must be a plain object with `listIssuesPage()`,
+`createIssue()`, and `updateIssue()`. The publisher does not read a token or
+environment variable and has no direct GitHub library dependency.
+
+Listing starts at page 1 with `perPage: 100`. A page shorter than 100 ends the
+scan. Exactly 100 full pages without termination fails with
+`PAGINATION_LIMIT_EXCEEDED`. Every page and record is validated, and identities
+found on different pages are treated exactly like identities on one page.
+
+The first create or update is allowed only after repository, report, Markdown,
+client, all pages, all records, Pull Request filtering, identity parsing,
+duplicate checks, and the final plan are complete. Each invocation performs at
+most one mutation.
+
+Successful publisher results are:
+
+```js
+{
+  action: "CREATED" | "UPDATED" | "NOOP",
+  issueNumber,
+  mutationPerformed: boolean,
+}
+```
+
+Failures use `IssuePublicationError` with stable `name`, `code`, `path`, and a
+sanitized message. Messages do not include complete reports, Markdown, tokens,
+client-response dumps, or prompt content.
+
+## Future workflow boundary
+
+Task 004 adds no schedule, manual dispatch, production token wiring, or real
+Issue mutation. A future workflow needs only:
+
+```yaml
+permissions:
+  contents: read
+  issues: write
+```
+
+Real publisher runs must share one concurrency group so two runs do not both
+observe zero candidates and race to create separate rolling Issues.
+
+Upstream acquisition, real prompt adapters, version monitoring, customization
+application, Claude Code execution, and `tweakcc` remain separate integrations.
