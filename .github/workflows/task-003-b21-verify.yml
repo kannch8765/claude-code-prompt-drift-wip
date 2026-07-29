@@ -1,0 +1,43 @@
+name: Task 003 B2.1 verification
+
+on:
+  push:
+    branches:
+      - task/003-report-builder-renderer
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-clean:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout task branch
+        uses: actions/checkout@v4
+        with:
+          ref: task/003-report-builder-renderer
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Run complete checks
+        run: npm run check
+
+      - name: Remove temporary verifier after success
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/task-003-b21-verify.yml
+          git add --all
+          git diff --cached --check
+          git commit -m "test: verify renderer HTTPS boundary"
+          git push origin HEAD:task/003-report-builder-renderer
