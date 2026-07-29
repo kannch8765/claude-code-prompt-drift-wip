@@ -2,9 +2,14 @@
   "$schema": "../schemas/issue-report.schema.json",
   "contractVersion": "1",
   "reportId": "fictional.run-0001",
-  "generatedAt": "2026-01-02T00:00:00Z",
+  "generatedAt": "2026-01-02T00:00:00.000Z",
   "status": "REVIEW_REQUIRED",
   "mutationsPerformed": false,
+  "baseline": {
+    "source": "https://airship.example.invalid/baselines",
+    "version": "0.0.1-fictional",
+    "inventoryDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
   "upstream": {
     "ready": true,
     "source": "https://airship.example.invalid/prompts",
@@ -15,14 +20,20 @@
     "frozenTargets": 1,
     "upstreamTargets": 1,
     "findingCounts": {
-      "TARGET_CHANGED": 1
+      "UNCHANGED": 0,
+      "TARGET_CHANGED": 1,
+      "TARGET_MISSING": 0,
+      "POSSIBLE_RENAME": 0,
+      "AMBIGUOUS_MATCH": 0,
+      "NEW_UPSTREAM_PROMPT": 0,
+      "UPSTREAM_NOT_READY": 0
     }
   },
   "findings": [
     {
       "kind": "TARGET_CHANGED",
       "status": "REVIEW_REQUIRED",
-      "message": "The fictional target keeps its stable ID but has a different digest.",
+      "message": "Exact target ID exists, but its digest changed.",
       "customizationId": "fictional.weathered-compass.extra-caution",
       "targetId": "fictional.weathered-compass",
       "expectedDigest": "sha256:76e7646d8849fc9e05e3f75d75231e2f02849ccc14a674ced7a7e3a955f6434f",

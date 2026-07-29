@@ -6,10 +6,10 @@ Claude Code Prompt Drift is a personal CI watcher for detecting changes in an
 upstream prompt inventory and deciding whether frozen customizations are still
 safe to reapply.
 
-This repository contains a deliberately public, synthetic contract and a pure,
-deterministic comparison engine. It does not contain genuine Claude Code
-prompts, copied prompt names, private customizations, or a working integration
-with any patching tool.
+This repository contains deliberately public, synthetic contracts and pure,
+deterministic local processing. It does not contain genuine Claude Code prompts,
+copied prompt names, private customizations, or a working integration with any
+patching tool.
 
 ## What this project is for
 
@@ -17,33 +17,78 @@ The intended workflow is:
 
 1. A user supplies a frozen customization manifest and its local artifacts.
 2. A future collector supplies a normalized upstream inventory.
-3. `classifyInventory()` classifies every frozen target and any unmatched
-   upstream entries.
-4. A report is produced with one of four compatibility states:
-   `SAFE_TO_REAPPLY`, `REVIEW_REQUIRED`, `BLOCKED`, or
-   `UPSTREAM_NOT_READY`.
-5. A future publisher may render that report into a GitHub Issue after an
-   explicit review boundary.
+3. `classifyInventory()` classifies every frozen target and unmatched upstream
+   entry.
+4. `buildIssueReport()` adds explicit report and inventory metadata without
+   changing the classifier result.
+5. `renderIssueMarkdown()` produces a safe, Issue-compatible Markdown body.
+6. A future Task 004 publisher may create or update a GitHub Issue after a
+   separate mutation boundary.
 
-## Comparison API
+## Public local APIs
+
+### Comparison
 
 ```js
 import { classifyInventory } from "./src/classify-inventory.mjs";
 
-const result = classifyInventory({
+const classification = classifyInventory({
   upstreamReady,
   frozenEntries,
   upstreamEntries,
 });
 ```
 
-The function performs no file, network, clock, locale-service, model, or GitHub
-I/O. It returns `{ status, findings, summary }` and never mutates the supplied
-objects or arrays. Invalid input throws `ClassificationInputError` with stable
-`code` and `path` fields.
+The classifier performs no file, network, clock, locale-service, model, or
+GitHub I/O. It returns `{ status, findings, summary }` and never mutates supplied
+objects or arrays.
 
-See `docs/compatibility-model.md` for the exact input shape, normalization,
-matching, consumption, ordering, and error contracts.
+### Report builder
+
+```js
+import { buildIssueReport } from "./src/build-issue-report.mjs";
+
+const report = buildIssueReport({
+  classification,
+  reportId: "fictional.run-0003",
+  generatedAt: "2026-07-29T03:17:00.000Z",
+  contractVersion: "1",
+  baseline: {
+    source: "https://airship.example.invalid/baselines",
+    version: "0.0.1-fictional",
+    inventoryDigest: "sha256:<64 lowercase hex characters>",
+  },
+  upstream: {
+    ready: true,
+    source: "https://airship.example.invalid/prompts",
+    version: "0.0.2-fictional",
+    inventoryDigest: "sha256:<64 lowercase hex characters>",
+  },
+});
+```
+
+The builder preserves classifier status, finding content and order, summary, and
+finding counts. It adds only explicit metadata and
+`mutationsPerformed: false`. It reads no clock, random source, environment,
+filesystem, network, model, or GitHub API. Invalid input throws
+`IssueReportInputError` with stable `code` and `path` fields.
+
+### Safe Markdown renderer
+
+```js
+import { renderIssueMarkdown } from "./src/render-issue-markdown.mjs";
+
+const markdown = renderIssueMarkdown(report);
+```
+
+The renderer emits deterministic GitHub Issue-compatible Markdown with one
+fixed public marker. It treats every report string as untrusted, neutralizes
+Markdown and HTML injection, prevents forged headings and markers, contains
+untrusted values in safe inline-code spans, and redacts local absolute path-like
+text. It does not create or update an Issue, follow links, read artifact paths,
+or render prompt bodies.
+
+See `docs/compatibility-model.md` for exact classifier and report contracts.
 
 ## Unofficial project
 
@@ -61,7 +106,7 @@ The public repository must remain safe to inspect and fork:
 - no installation or execution of Claude Code;
 - no automatic patch application;
 - no credentials, account data, workstation paths, or runtime session data;
-- no GitHub Issue mutation in the contract, fixture, or classifier layer.
+- no GitHub Issue mutation in the classifier, builder, or renderer layers.
 
 All examples and fixtures use fictional airship-navigation prompts, reserved
 `.invalid` sources, and IDs beginning with `fictional.`. Tests enforce this
@@ -70,14 +115,16 @@ synthetic-only boundary.
 ## Repository map
 
 - `docs/architecture.md` — components, trust boundaries, and staged delivery.
-- `docs/compatibility-model.md` — statuses and deterministic classification.
+- `docs/compatibility-model.md` — deterministic classification and reporting.
 - `schemas/frozen-manifest.schema.json` — public manifest contract.
-- `schemas/issue-report.schema.json` — future Issue report payload contract.
+- `schemas/issue-report.schema.json` — machine-readable report contract.
 - `examples/` — fictional prompt artifacts, manifest, and report.
 - `fixtures/` — executable deterministic comparison cases.
 - `src/contracts.mjs` — shared status and finding constants.
 - `src/classify-inventory.mjs` — pure comparison and classification engine.
-- `test/` — contract, fixture, classifier, digest, and synthetic-content tests.
+- `src/build-issue-report.mjs` — pure report builder.
+- `src/render-issue-markdown.mjs` — pure safe Markdown renderer.
+- `test/` — contract, fixture, classifier, report, rendering, and safety tests.
 
 ## Development
 
@@ -102,9 +149,12 @@ install contract.
 
 ## Current scope
 
-Task 002 implements deterministic local comparison and classification. Upstream
-acquisition, real integrations, patch application, report metadata generation,
-GitHub Issue rendering, and Issue mutation remain separate later stages.
+Task 003 implements deterministic report construction and safe Markdown
+rendering. Upstream acquisition, real integrations, patch application, and
+GitHub Issue mutation remain separate stages. Upstream acquisition and any
+`tweakcc` integration remain independent of report generation. Task 004 may add
+an Issue publisher, but it must consume the validated report and rendered body
+without moving GitHub permissions into the builder or renderer.
 
 ## License
 

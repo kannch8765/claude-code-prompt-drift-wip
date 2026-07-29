@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/prompt-drift/issue-report.schema.json",
   "title": "Prompt drift issue report",
-  "description": "Machine-readable payload for a future renderer and Issue publisher.",
+  "description": "Machine-readable payload for deterministic rendering and a future Issue publisher.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,30 +11,51 @@
     "generatedAt",
     "status",
     "mutationsPerformed",
+    "baseline",
     "upstream",
     "summary",
     "findings"
   ],
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
     },
     "contractVersion": {
       "const": "1"
     },
     "reportId": {
-      "type": "string",
-      "minLength": 1
+      "$ref": "#/$defs/reportId"
     },
     "generatedAt": {
-      "type": "string",
-      "format": "date-time"
+      "$ref": "#/$defs/canonicalUtcDateTime"
     },
     "status": {
       "$ref": "#/$defs/status"
     },
     "mutationsPerformed": {
       "const": false
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "version",
+        "inventoryDigest"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/sourceIdentifier"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "inventoryDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
     },
     "upstream": {
       "type": "object",
@@ -50,13 +71,16 @@
           "type": "boolean"
         },
         "source": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/sourceIdentifier"
         },
         "version": {
-          "type": [
-            "string",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/version"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "inventoryDigest": {
@@ -70,10 +94,48 @@
           ]
         },
         "readinessReason": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/metadataText"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "ready": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "version": {
+                "$ref": "#/$defs/version"
+              },
+              "inventoryDigest": {
+                "$ref": "#/$defs/digest"
+              }
+            },
+            "not": {
+              "required": [
+                "readinessReason"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "readinessReason"
+            ],
+            "properties": {
+              "version": {
+                "type": "null"
+              },
+              "inventoryDigest": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "summary": {
       "type": "object",
@@ -94,9 +156,45 @@
         },
         "findingCounts": {
           "type": "object",
-          "additionalProperties": {
-            "type": "integer",
-            "minimum": 0
+          "additionalProperties": false,
+          "required": [
+            "UNCHANGED",
+            "TARGET_CHANGED",
+            "TARGET_MISSING",
+            "POSSIBLE_RENAME",
+            "AMBIGUOUS_MATCH",
+            "NEW_UPSTREAM_PROMPT",
+            "UPSTREAM_NOT_READY"
+          ],
+          "properties": {
+            "UNCHANGED": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "TARGET_CHANGED": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "TARGET_MISSING": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "POSSIBLE_RENAME": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "AMBIGUOUS_MATCH": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "NEW_UPSTREAM_PROMPT": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "UPSTREAM_NOT_READY": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         }
       }
@@ -104,51 +202,301 @@
     "findings": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "kind",
-          "status",
-          "message"
-        ],
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
         "properties": {
-          "kind": {
-            "$ref": "#/$defs/findingKind"
-          },
           "status": {
-            "$ref": "#/$defs/status"
-          },
-          "message": {
-            "type": "string",
-            "minLength": 1
-          },
-          "customizationId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "targetId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "candidateTargetIds": {
-            "type": "array",
-            "uniqueItems": true,
-            "items": {
-              "type": "string",
-              "minLength": 1
+            "const": "UPSTREAM_NOT_READY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "upstream": {
+            "properties": {
+              "ready": {
+                "const": false
+              }
             }
-          },
-          "expectedDigest": {
-            "$ref": "#/$defs/digest"
-          },
-          "actualDigest": {
-            "$ref": "#/$defs/digest"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "upstream": {
+            "properties": {
+              "ready": {
+                "const": true
+              }
+            }
           }
         }
       }
     }
-  },
+  ],
   "$defs": {
+    "finding": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "status",
+            "message",
+            "customizationId",
+            "targetId",
+            "expectedDigest",
+            "actualDigest"
+          ],
+          "properties": {
+            "kind": {
+              "const": "UNCHANGED"
+            },
+            "status": {
+              "const": "SAFE_TO_REAPPLY"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "customizationId": {
+              "$ref": "#/$defs/identity"
+            },
+            "targetId": {
+              "$ref": "#/$defs/identity"
+            },
+            "expectedDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "actualDigest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "status",
+            "message",
+            "customizationId",
+            "targetId",
+            "expectedDigest",
+            "actualDigest"
+          ],
+          "properties": {
+            "kind": {
+              "const": "TARGET_CHANGED"
+            },
+            "status": {
+              "const": "REVIEW_REQUIRED"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "customizationId": {
+              "$ref": "#/$defs/identity"
+            },
+            "targetId": {
+              "$ref": "#/$defs/identity"
+            },
+            "expectedDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "actualDigest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "status",
+            "message",
+            "customizationId",
+            "targetId",
+            "expectedDigest"
+          ],
+          "properties": {
+            "kind": {
+              "const": "TARGET_MISSING"
+            },
+            "status": {
+              "const": "BLOCKED"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "customizationId": {
+              "$ref": "#/$defs/identity"
+            },
+            "targetId": {
+              "$ref": "#/$defs/identity"
+            },
+            "expectedDigest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "status",
+            "message",
+            "customizationId",
+            "targetId",
+            "candidateTargetIds",
+            "expectedDigest",
+            "actualDigest"
+          ],
+          "properties": {
+            "kind": {
+              "const": "POSSIBLE_RENAME"
+            },
+            "status": {
+              "const": "REVIEW_REQUIRED"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "customizationId": {
+              "$ref": "#/$defs/identity"
+            },
+            "targetId": {
+              "$ref": "#/$defs/identity"
+            },
+            "candidateTargetIds": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/identity"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "expectedDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "actualDigest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "status",
+            "message",
+            "customizationId",
+            "targetId",
+            "candidateTargetIds",
+            "expectedDigest"
+          ],
+          "properties": {
+            "kind": {
+              "const": "AMBIGUOUS_MATCH"
+            },
+            "status": {
+              "const": "BLOCKED"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "customizationId": {
+              "$ref": "#/$defs/identity"
+            },
+            "targetId": {
+              "$ref": "#/$defs/identity"
+            },
+            "candidateTargetIds": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/identity"
+              },
+              "minItems": 2
+            },
+            "expectedDigest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "status",
+            "message",
+            "targetId",
+            "actualDigest"
+          ],
+          "properties": {
+            "kind": {
+              "const": "NEW_UPSTREAM_PROMPT"
+            },
+            "status": {
+              "const": "REVIEW_REQUIRED"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "targetId": {
+              "$ref": "#/$defs/identity"
+            },
+            "actualDigest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "status",
+            "message"
+          ],
+          "properties": {
+            "kind": {
+              "const": "UPSTREAM_NOT_READY"
+            },
+            "status": {
+              "const": "UPSTREAM_NOT_READY"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          }
+        }
+      ]
+    },
     "digest": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
@@ -171,6 +519,44 @@
         "NEW_UPSTREAM_PROMPT",
         "UPSTREAM_NOT_READY"
       ]
+    },
+    "reportId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^(?![A-Za-z]:)[A-Za-z0-9](?:[A-Za-z0-9._:@+-]{0,126}[A-Za-z0-9])?$",
+      "description": "Portable report identifier; Windows drive-prefixed values are forbidden."
+    },
+    "identity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?![A-Za-z]:)[A-Za-z0-9](?:[A-Za-z0-9._:@+-]{0,254}[A-Za-z0-9])?$",
+      "description": "Portable identity without path separators, controls, or a Windows drive prefix."
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[0-9A-Za-z](?:[0-9A-Za-z._+-]{0,62}[0-9A-Za-z])?$"
+    },
+    "sourceIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?:(?![A-Za-z]:)[A-Za-z0-9](?:[A-Za-z0-9._:@+-]{0,126}[A-Za-z0-9])?|https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9._~-]+)*)$",
+      "description": "Portable token without a Windows drive prefix, or a canonical HTTPS source identifier."
+    },
+    "metadataText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F\\u2028\\u2029]+$"
+    },
+    "canonicalUtcDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
     }
   }
 }
