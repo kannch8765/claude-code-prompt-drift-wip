@@ -38,7 +38,7 @@ const SECTION_RULES = Object.freeze([
 ]);
 
 const CANONICAL_HTTPS_SOURCE_PATTERN =
-  /(https:\/\/[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:\/(?!\.{1,2}(?:\/|$))[A-Za-z0-9._~-]+)*)/giu;
+  /(https:\/\/[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:\/(?!\.{1,2}(?:\/|$))[A-Za-z0-9._~-]+)*)(?!:[\\/])/giu;
 
 function redactNonUrlPaths(value) {
   return value

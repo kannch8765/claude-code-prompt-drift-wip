@@ -134,3 +134,21 @@ test("renderer redacts key-prefixed and HTTPS-adjacent absolute paths", () => {
     3,
   );
 });
+
+test("renderer leaves adjacent drive letters outside canonical HTTPS protection", () => {
+  const message = [
+    "source=https://airship.example.invalid/publicC:\\private\\prompt.md",
+    "source=https://airship.example.invalid/C:\\private\\prompt.md",
+  ].join(" ");
+  const markdown = renderIssueMarkdown(
+    build({ classification: classification(message) }),
+  );
+
+  assert.equal(markdown.includes("C:\\private\\prompt.md"), false);
+  assert.equal(markdown.includes(":\\private\\prompt.md"), false);
+  assert.ok(
+    (markdown.match(/&#91;redacted-absolute-path&#93;/gu)?.length ?? 0) >= 2,
+  );
+  assert.match(markdown, /https:\/\/airship\.example\.invalid\/public/u);
+  assert.match(markdown, /https:\/\/airship\.example\.invalid/u);
+});
