@@ -37,7 +37,8 @@ const SECTION_RULES = Object.freeze([
   },
 ]);
 
-const HTTP_URL_PATTERN = /(https?:\/\/[^\s<>()\[\]{}]*)/giu;
+const CANONICAL_HTTPS_SOURCE_PATTERN =
+  /(https:\/\/[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:\/(?!\.{1,2}(?:\/|$))[A-Za-z0-9._~-]+)*)/giu;
 
 function redactNonUrlPaths(value) {
   return value
@@ -62,7 +63,7 @@ function redactNonUrlPaths(value) {
 
 function redactAbsolutePaths(value) {
   return value
-    .split(HTTP_URL_PATTERN)
+    .split(CANONICAL_HTTPS_SOURCE_PATTERN)
     .map((segment, index) => (index % 2 === 1 ? segment : redactNonUrlPaths(segment)))
     .join("");
 }
