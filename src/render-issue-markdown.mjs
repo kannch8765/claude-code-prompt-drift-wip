@@ -37,13 +37,34 @@ const SECTION_RULES = Object.freeze([
   },
 ]);
 
+const HTTP_URL_PATTERN = /(https?:\/\/[^\s<>()\[\]{}]*)/giu;
+
+function redactNonUrlPaths(value) {
+  return value
+    .replace(/file:\/\/[^\s<>()\[\]{}]*/giu, "[redacted-file-url]")
+    .replace(
+      /(?<![A-Za-z0-9._~%+-])[A-Za-z]:[\\/][^\s<>()\[\]{}]*/gu,
+      "[redacted-absolute-path]",
+    )
+    .replace(
+      /\\\\[^\\/\s<>()\[\]{}]+[\\/][^\s<>()\[\]{}]*/gu,
+      "[redacted-absolute-path]",
+    )
+    .replace(
+      /\/\/[^/\s<>()\[\]{}]+\/[^\s<>()\[\]{}]*/gu,
+      "[redacted-absolute-path]",
+    )
+    .replace(
+      /(?<![A-Za-z0-9._~%+\/-])\/(?!\/)[^\s<>()\[\]{}]*/gu,
+      "[redacted-absolute-path]",
+    );
+}
+
 function redactAbsolutePaths(value) {
   return value
-    .replace(
-      /(^|[\s("'`])(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]|\/(?!\/))[^\s<>()\[\]{}]*/gu,
-      "$1[redacted-absolute-path]",
-    )
-    .replace(/file:\/\/[^\s<>()\[\]{}]*/giu, "[redacted-file-url]");
+    .split(HTTP_URL_PATTERN)
+    .map((segment, index) => (index % 2 === 1 ? segment : redactNonUrlPaths(segment)))
+    .join("");
 }
 
 function safeText(value) {
