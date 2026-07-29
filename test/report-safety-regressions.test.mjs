@@ -103,13 +103,15 @@ test("runtime and schema reject Windows drive-relative metadata prefixes", async
   assert.equal(build({ reportId: "run:id-0003" }).reportId, "run:id-0003");
 });
 
-test("renderer redacts key-prefixed absolute and UNC paths without damaging HTTPS", () => {
+test("renderer redacts key-prefixed and HTTPS-adjacent absolute paths", () => {
   const message = [
     "artifact=/home/user/private/prompt.md",
     "artifact=C:\\private\\prompt.md",
     "artifact=\\\\server\\share\\secret",
     "artifact=//server/share/secret",
     "source=https://airship.example.invalid/public",
+    "source=https://airship.example.invalid/public;C:\\private\\prompt.md",
+    "source=https://airship.example.invalid/public\\\\server\\share\\secret",
   ].join(" ");
   const markdown = renderIssueMarkdown(
     build({ classification: classification(message) }),
@@ -125,7 +127,10 @@ test("renderer redacts key-prefixed absolute and UNC paths without damaging HTTP
   }
   assert.equal(
     markdown.match(/&#91;redacted-absolute-path&#93;/gu)?.length,
-    4,
+    6,
   );
-  assert.match(markdown, /https:\/\/airship\.example\.invalid\/public/u);
+  assert.equal(
+    markdown.match(/https:\/\/airship\.example\.invalid\/public/gu)?.length,
+    3,
+  );
 });
