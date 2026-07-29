@@ -12,38 +12,76 @@ function fail(code, path, detail) {
   throw new IssuePublicationError(code, path, detail);
 }
 
-function hasOwn(value, key) {
-  return Object.prototype.hasOwnProperty.call(value, key);
+function inspectPlainObject(
+  value,
+  path,
+  typeCode = "INVALID_TYPE",
+  inspectionCode = "UNSAFE_PROPERTY_ACCESS",
+) {
+  let isArray = false;
+  if (value !== null && typeof value === "object") {
+    try {
+      isArray = Array.isArray(value);
+    } catch {
+      fail(inspectionCode, path, "object properties could not be inspected safely");
+    }
+  }
+  if (value === null || typeof value !== "object" || isArray) {
+    fail(typeCode, path, "expected a plain object");
+  }
+
+  let prototype;
+  try {
+    prototype = Object.getPrototypeOf(value);
+  } catch {
+    fail(inspectionCode, path, "object properties could not be inspected safely");
+  }
+  if (prototype !== Object.prototype && prototype !== null) {
+    fail(typeCode, path, "expected a plain object");
+  }
+
+  try {
+    return Object.getOwnPropertyDescriptors(value);
+  } catch {
+    fail(inspectionCode, path, "object properties could not be inspected safely");
+  }
 }
 
-function requirePlainObject(value, path) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    fail("INVALID_TYPE", path, "expected a plain object");
+function readStrictDataRecord(value, path, expectedKeys) {
+  const descriptors = inspectPlainObject(value, path);
+  const expected = new Set(expectedKeys);
+
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (typeof key !== "string" || !expected.has(key)) {
+      fail("UNKNOWN_FIELD", path, "field is not part of the public API");
+    }
+    if (!("value" in descriptors[key])) {
+      fail(
+        "ACCESSOR_PROPERTY_NOT_ALLOWED",
+        `${path}.${key}`,
+        "accessor properties are not part of the public contract",
+      );
+    }
   }
 
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    fail("INVALID_TYPE", path, "expected a plain object");
+  const clone = {};
+  for (const key of expectedKeys) {
+    const descriptor = descriptors[key];
+    if (descriptor === undefined) {
+      fail("MISSING_FIELD", `${path}.${key}`, "required field is missing");
+    }
+    clone[key] = descriptor.value;
   }
-
-  return value;
+  return clone;
 }
 
 function requirePublisherInput(value) {
-  requirePlainObject(value, "input");
-  const expected = new Set(["repository", "report", "markdown", "client"]);
-
-  for (const key of Object.keys(value)) {
-    if (!expected.has(key)) {
-      fail("UNKNOWN_FIELD", "input", "field is not part of the public API");
-    }
-  }
-
-  for (const key of expected) {
-    if (!hasOwn(value, key)) {
-      fail("MISSING_FIELD", `input.${key}`, "required field is missing");
-    }
-  }
+  return readStrictDataRecord(value, "input", [
+    "repository",
+    "report",
+    "markdown",
+    "client",
+  ]);
 }
 
 function parseRepository(value) {
@@ -75,12 +113,81 @@ function parseRepository(value) {
 }
 
 function validateClient(client) {
-  requirePlainObject(client, "client");
+  const descriptors = inspectPlainObject(client, "client", "INVALID_CLIENT", "INVALID_CLIENT");
+  const methods = {};
+
   for (const method of ["listIssuesPage", "createIssue", "updateIssue"]) {
-    if (!hasOwn(client, method) || typeof client[method] !== "function") {
+    const descriptor = descriptors[method];
+    if (
+      descriptor === undefined ||
+      !("value" in descriptor) ||
+      typeof descriptor.value !== "function"
+    ) {
       fail("INVALID_CLIENT", `client.${method}`, "required client method is missing");
     }
+    methods[method] = descriptor.value;
   }
+
+  return {
+    receiver: client,
+    ...methods,
+  };
+}
+
+function clonePageResponse(value, page) {
+  let isArray;
+  try {
+    isArray = Array.isArray(value);
+  } catch {
+    fail("INVALID_PAGE_RESPONSE", `pages[${page}]`, "page could not be inspected safely");
+  }
+  if (!isArray) {
+    fail(
+      "INVALID_PAGE_RESPONSE",
+      `pages[${page}]`,
+      `expected an array containing at most ${PER_PAGE} records`,
+    );
+  }
+
+  let descriptors;
+  try {
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch {
+    fail("INVALID_PAGE_RESPONSE", `pages[${page}]`, "page could not be inspected safely");
+  }
+
+  const lengthDescriptor = descriptors.length;
+  if (
+    lengthDescriptor === undefined ||
+    !("value" in lengthDescriptor) ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0 ||
+    lengthDescriptor.value > PER_PAGE
+  ) {
+    fail(
+      "INVALID_PAGE_RESPONSE",
+      `pages[${page}]`,
+      `expected an array containing at most ${PER_PAGE} records`,
+    );
+  }
+
+  const clone = [];
+  for (let index = 0; index < lengthDescriptor.value; index += 1) {
+    const descriptor = descriptors[String(index)];
+    if (descriptor === undefined) {
+      clone.push(undefined);
+      continue;
+    }
+    if (!("value" in descriptor)) {
+      fail(
+        "ACCESSOR_PROPERTY_NOT_ALLOWED",
+        `pages[${page}][${index}]`,
+        "accessor page entries are not part of the client contract",
+      );
+    }
+    clone.push(descriptor.value);
+  }
+  return clone;
 }
 
 async function listAllOpenIssues({ owner, repo, client }) {
@@ -89,27 +196,22 @@ async function listAllOpenIssues({ owner, repo, client }) {
   for (let page = 1; page <= MAX_ISSUE_PAGES; page += 1) {
     let response;
     try {
-      response = await client.listIssuesPage({
-        owner,
-        repo,
-        state: "open",
-        page,
-        perPage: PER_PAGE,
-      });
+      response = await Reflect.apply(client.listIssuesPage, client.receiver, [
+        {
+          owner,
+          repo,
+          state: "open",
+          page,
+          perPage: PER_PAGE,
+        },
+      ]);
     } catch {
       fail("LIST_ISSUES_FAILED", "client.listIssuesPage", "GitHub Issue listing failed");
     }
 
-    if (!Array.isArray(response) || response.length > PER_PAGE) {
-      fail(
-        "INVALID_PAGE_RESPONSE",
-        `pages[${page}]`,
-        `expected an array containing at most ${PER_PAGE} records`,
-      );
-    }
-
-    issues.push(...response);
-    if (response.length < PER_PAGE) {
+    const pageRecords = clonePageResponse(response, page);
+    issues.push(...pageRecords);
+    if (pageRecords.length < PER_PAGE) {
       return issues;
     }
   }
@@ -122,30 +224,47 @@ async function listAllOpenIssues({ owner, repo, client }) {
 }
 
 function validateMutationResponse(value, path, expectedIssueNumber = null) {
-  requirePlainObject(value, path);
-  if (!Number.isSafeInteger(value.number) || value.number <= 0) {
-    fail("INVALID_MUTATION_RESPONSE", `${path}.number`, "expected a positive issue number");
-  }
-  if (expectedIssueNumber !== null && value.number !== expectedIssueNumber) {
+  const descriptors = inspectPlainObject(
+    value,
+    path,
+    "INVALID_MUTATION_RESPONSE",
+    "INVALID_MUTATION_RESPONSE",
+  );
+  const numberDescriptor = descriptors.number;
+  if (
+    numberDescriptor === undefined ||
+    !("value" in numberDescriptor) ||
+    !Number.isSafeInteger(numberDescriptor.value) ||
+    numberDescriptor.value <= 0
+  ) {
     fail(
       "INVALID_MUTATION_RESPONSE",
       `${path}.number`,
-      "updated Issue number did not match the requested target",
+      "response did not provide a positive issue number; the remote mutation may already have completed",
     );
   }
-  return value.number;
+
+  const issueNumber = numberDescriptor.value;
+  if (expectedIssueNumber !== null && issueNumber !== expectedIssueNumber) {
+    fail(
+      "INVALID_MUTATION_RESPONSE",
+      `${path}.number`,
+      "updated Issue number did not match the requested target; the remote mutation may already have completed",
+    );
+  }
+  return issueNumber;
 }
 
 export async function publishGitHubIssue(input) {
-  requirePublisherInput(input);
-  const { repository, report, markdown, client } = input;
+  const validatedInput = requirePublisherInput(input);
+  const { repository, report, markdown, client } = validatedInput;
   const { owner, repo } = parseRepository(repository);
 
-  // Preflight the complete Task 003 content contract before any remote read.
+  // Preflight the complete Task 003 content and payload-size contract before any remote read.
   planIssuePublication({ report, markdown, issues: [] });
-  validateClient(client);
+  const validatedClient = validateClient(client);
 
-  const issues = await listAllOpenIssues({ owner, repo, client });
+  const issues = await listAllOpenIssues({ owner, repo, client: validatedClient });
   const plan = planIssuePublication({ report, markdown, issues });
 
   if (plan.action === "NOOP") {
@@ -159,12 +278,14 @@ export async function publishGitHubIssue(input) {
   if (plan.action === "CREATE") {
     let response;
     try {
-      response = await client.createIssue({
-        owner,
-        repo,
-        title: plan.title,
-        body: plan.body,
-      });
+      response = await Reflect.apply(validatedClient.createIssue, validatedClient.receiver, [
+        {
+          owner,
+          repo,
+          title: plan.title,
+          body: plan.body,
+        },
+      ]);
     } catch {
       fail("CREATE_ISSUE_FAILED", "client.createIssue", "GitHub Issue creation failed");
     }
@@ -179,13 +300,15 @@ export async function publishGitHubIssue(input) {
   if (plan.action === "UPDATE") {
     let response;
     try {
-      response = await client.updateIssue({
-        owner,
-        repo,
-        issueNumber: plan.issueNumber,
-        title: plan.title,
-        body: plan.body,
-      });
+      response = await Reflect.apply(validatedClient.updateIssue, validatedClient.receiver, [
+        {
+          owner,
+          repo,
+          issueNumber: plan.issueNumber,
+          title: plan.title,
+          body: plan.body,
+        },
+      ]);
     } catch {
       fail("UPDATE_ISSUE_FAILED", "client.updateIssue", "GitHub Issue update failed");
     }

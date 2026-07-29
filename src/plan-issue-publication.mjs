@@ -6,6 +6,8 @@ import {
 
 export const ISSUE_IDENTITY_MARKER =
   "<!-- claude-code-prompt-drift:rolling-issue:v1 -->";
+export const ISSUE_TITLE_MAX_CHARACTERS = 256;
+export const ISSUE_BODY_MAX_CHARACTERS = 65_536;
 
 const TITLE_BY_STATUS = Object.freeze({
   SAFE_TO_REAPPLY: "Claude Code Prompt Drift — SAFE_TO_REAPPLY",
@@ -35,38 +37,134 @@ function fail(code, path, detail) {
   throw new IssuePublicationError(code, path, detail);
 }
 
-function hasOwn(value, key) {
-  return Object.prototype.hasOwnProperty.call(value, key);
+function inspectPlainObject(
+  value,
+  path,
+  typeCode = "INVALID_TYPE",
+  inspectionCode = "UNSAFE_PROPERTY_ACCESS",
+) {
+  let isArray = false;
+  if (value !== null && typeof value === "object") {
+    try {
+      isArray = Array.isArray(value);
+    } catch {
+      fail(inspectionCode, path, "object properties could not be inspected safely");
+    }
+  }
+  if (value === null || typeof value !== "object" || isArray) {
+    fail(typeCode, path, "expected a plain object");
+  }
+
+  let prototype;
+  try {
+    prototype = Object.getPrototypeOf(value);
+  } catch {
+    fail(inspectionCode, path, "object properties could not be inspected safely");
+  }
+  if (prototype !== Object.prototype && prototype !== null) {
+    fail(typeCode, path, "expected a plain object");
+  }
+
+  try {
+    return Object.getOwnPropertyDescriptors(value);
+  } catch {
+    fail(inspectionCode, path, "object properties could not be inspected safely");
+  }
 }
 
-function requirePlainObject(value, path) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    fail("INVALID_TYPE", path, "expected a plain object");
+function rejectAccessorProperties(descriptors, path, code = "ACCESSOR_PROPERTY_NOT_ALLOWED") {
+  for (const key of Reflect.ownKeys(descriptors)) {
+    const descriptor = descriptors[key];
+    if (!("value" in descriptor)) {
+      const propertyPath =
+        typeof key === "string" ? `${path}.${key}` : `${path}.[symbol]`;
+      fail(code, propertyPath, "accessor properties are not part of the public contract");
+    }
+  }
+}
+
+function readStrictDataRecord(value, path, expectedKeys, requiredKeys = expectedKeys) {
+  const descriptors = inspectPlainObject(value, path);
+  const expected = new Set(expectedKeys);
+
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (typeof key !== "string" || !expected.has(key)) {
+      fail("UNKNOWN_FIELD", path, "field is not part of the public API");
+    }
+    if (!("value" in descriptors[key])) {
+      fail(
+        "ACCESSOR_PROPERTY_NOT_ALLOWED",
+        `${path}.${key}`,
+        "accessor properties are not part of the public contract",
+      );
+    }
   }
 
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    fail("INVALID_TYPE", path, "expected a plain object");
+  for (const key of requiredKeys) {
+    if (descriptors[key] === undefined) {
+      fail("MISSING_FIELD", `${path}.${key}`, "required field is missing");
+    }
   }
 
-  return value;
+  const clone = {};
+  for (const key of expectedKeys) {
+    const descriptor = descriptors[key];
+    if (descriptor !== undefined) {
+      clone[key] = descriptor.value;
+    }
+  }
+  return clone;
+}
+
+function readDataArray(value, path) {
+  let isArray;
+  try {
+    isArray = Array.isArray(value);
+  } catch {
+    fail("UNSAFE_PROPERTY_ACCESS", path, "array properties could not be inspected safely");
+  }
+  if (!isArray) {
+    fail("INVALID_TYPE", path, "expected an array");
+  }
+
+  let descriptors;
+  try {
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch {
+    fail("UNSAFE_PROPERTY_ACCESS", path, "array properties could not be inspected safely");
+  }
+
+  const lengthDescriptor = descriptors.length;
+  if (
+    lengthDescriptor === undefined ||
+    !("value" in lengthDescriptor) ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0
+  ) {
+    fail("INVALID_TYPE", path, "expected a safely inspectable array");
+  }
+
+  const clone = [];
+  for (let index = 0; index < lengthDescriptor.value; index += 1) {
+    const descriptor = descriptors[String(index)];
+    if (descriptor === undefined) {
+      clone.push(undefined);
+      continue;
+    }
+    if (!("value" in descriptor)) {
+      fail(
+        "ACCESSOR_PROPERTY_NOT_ALLOWED",
+        `${path}[${index}]`,
+        "accessor array entries are not part of the public contract",
+      );
+    }
+    clone.push(descriptor.value);
+  }
+  return clone;
 }
 
 function requirePlannerInput(value) {
-  requirePlainObject(value, "input");
-  const expected = new Set(["report", "markdown", "issues"]);
-
-  for (const key of Object.keys(value)) {
-    if (!expected.has(key)) {
-      fail("UNKNOWN_FIELD", "input", "field is not part of the public API");
-    }
-  }
-
-  for (const key of expected) {
-    if (!hasOwn(value, key)) {
-      fail("MISSING_FIELD", `input.${key}`, "required field is missing");
-    }
-  }
+  return readStrictDataRecord(value, "input", ["report", "markdown", "issues"]);
 }
 
 function countOccurrences(value, marker) {
@@ -87,7 +185,7 @@ function validateReportAndMarkdown(report, markdown) {
   let validatedReport;
   try {
     validatedReport = cloneAndValidateIssueReport(report);
-  } catch (error) {
+  } catch {
     fail("INVALID_REPORT", "report", "report does not satisfy the Task 003 contract");
   }
 
@@ -119,6 +217,13 @@ function validateReportAndMarkdown(report, markdown) {
   if (title === undefined) {
     fail("INVALID_REPORT", "report.status", "unsupported compatibility status");
   }
+  if (title.length > ISSUE_TITLE_MAX_CHARACTERS) {
+    fail(
+      "PUBLICATION_TITLE_TOO_LARGE",
+      "title",
+      `publication title exceeds the ${ISSUE_TITLE_MAX_CHARACTERS}-character contract`,
+    );
+  }
 
   const body = `${ISSUE_IDENTITY_MARKER}\n\n${markdown}`;
   if (
@@ -131,46 +236,66 @@ function validateReportAndMarkdown(report, markdown) {
       "publisher identity marker invariant was not satisfied",
     );
   }
+  if (body.length > ISSUE_BODY_MAX_CHARACTERS) {
+    fail(
+      "PUBLICATION_BODY_TOO_LARGE",
+      "body",
+      `publication body exceeds the ${ISSUE_BODY_MAX_CHARACTERS}-character contract`,
+    );
+  }
 
   return { title, body };
 }
 
 function requireIssueRecord(value, path) {
-  requirePlainObject(value, path);
+  const record = readStrictDataRecord(
+    value,
+    path,
+    [...ISSUE_RECORD_KEYS],
+    ["number", "state", "title", "body"],
+  );
 
-  for (const key of Object.keys(value)) {
-    if (!ISSUE_RECORD_KEYS.has(key)) {
-      fail("UNKNOWN_FIELD", path, "field is not part of the client contract");
-    }
-  }
-
-  for (const key of ["number", "state", "title", "body"]) {
-    if (!hasOwn(value, key)) {
-      fail("MISSING_FIELD", `${path}.${key}`, "required field is missing");
-    }
-  }
-
-  if (!Number.isSafeInteger(value.number) || value.number <= 0) {
+  if (!Number.isSafeInteger(record.number) || record.number <= 0) {
     fail("INVALID_VALUE", `${path}.number`, "expected a positive safe integer");
   }
-  if (value.state !== "open" && value.state !== "closed") {
+  if (record.state !== "open" && record.state !== "closed") {
     fail("INVALID_VALUE", `${path}.state`, "expected open or closed");
   }
   if (
-    typeof value.title !== "string" ||
-    value.title.length === 0 ||
-    value.title.length > 256
+    typeof record.title !== "string" ||
+    record.title.length === 0 ||
+    record.title.length > ISSUE_TITLE_MAX_CHARACTERS
   ) {
-    fail("INVALID_VALUE", `${path}.title`, "expected a non-empty title up to 256 characters");
+    fail(
+      "INVALID_VALUE",
+      `${path}.title`,
+      `expected a non-empty title up to ${ISSUE_TITLE_MAX_CHARACTERS} characters`,
+    );
   }
-  if (typeof value.body !== "string" || value.body.length > 65_536) {
-    fail("INVALID_VALUE", `${path}.body`, "expected a string up to 65536 characters");
-  }
-  if (hasOwn(value, "pull_request")) {
-    requirePlainObject(value.pull_request, `${path}.pull_request`);
+  if (
+    typeof record.body !== "string" ||
+    record.body.length > ISSUE_BODY_MAX_CHARACTERS
+  ) {
+    fail(
+      "INVALID_VALUE",
+      `${path}.body`,
+      `expected a string up to ${ISSUE_BODY_MAX_CHARACTERS} characters`,
+    );
   }
 
-  return value;
+  const isPullRequest = Object.hasOwn(record, "pull_request");
+  if (isPullRequest) {
+    const descriptors = inspectPlainObject(record.pull_request, `${path}.pull_request`);
+    rejectAccessorProperties(descriptors, `${path}.pull_request`);
+  }
+
+  return {
+    number: record.number,
+    state: record.state,
+    title: record.title,
+    body: record.body,
+    isPullRequest,
+  };
 }
 
 function hasCanonicalPrefix(body) {
@@ -182,16 +307,14 @@ function hasCanonicalPrefix(body) {
 }
 
 function findCanonicalCandidate(issues) {
-  if (!Array.isArray(issues)) {
-    fail("INVALID_TYPE", "issues", "expected an array");
-  }
-
+  const records = readDataArray(issues, "issues");
   const candidates = [];
-  for (const [index, issue] of issues.entries()) {
-    const path = `issues[${index}]`;
-    requireIssueRecord(issue, path);
 
-    if (issue.state !== "open" || hasOwn(issue, "pull_request")) {
+  for (let index = 0; index < records.length; index += 1) {
+    const path = `issues[${index}]`;
+    const issue = requireIssueRecord(records[index], path);
+
+    if (issue.state !== "open" || issue.isPullRequest) {
       continue;
     }
 
@@ -223,9 +346,12 @@ function findCanonicalCandidate(issues) {
 }
 
 export function planIssuePublication(input) {
-  requirePlannerInput(input);
-  const { title, body } = validateReportAndMarkdown(input.report, input.markdown);
-  const candidate = findCanonicalCandidate(input.issues);
+  const validatedInput = requirePlannerInput(input);
+  const { title, body } = validateReportAndMarkdown(
+    validatedInput.report,
+    validatedInput.markdown,
+  );
+  const candidate = findCanonicalCandidate(validatedInput.issues);
 
   if (candidate === null) {
     return {

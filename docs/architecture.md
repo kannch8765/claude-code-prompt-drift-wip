@@ -67,16 +67,22 @@ permission.
 2. recomputes `renderIssueMarkdown(report)` and requires byte identity;
 3. generates a fixed title from the four compatibility statuses;
 4. prefixes the body with the fixed rolling-Issue marker;
-5. validates normalized Issue records without modifying them;
-6. ignores closed Issues and Pull Request records;
-7. accepts an identity candidate only when the exact marker is its first line
+5. validates the generated title and body against shared 256-character and
+   65,536-character publication limits;
+6. validates normalized Issue records without modifying them;
+7. ignores closed Issues and Pull Request records;
+8. accepts an identity candidate only when the exact marker is its first line
    and occurs once;
-8. fails closed for a repeated marker on a canonical-prefix Issue;
-9. fails closed when more than one canonical identity exists;
-10. returns deterministic `CREATE`, `UPDATE`, or `NOOP` data.
+9. fails closed for a repeated marker on a canonical-prefix Issue;
+10. fails closed when more than one canonical identity exists;
+11. returns deterministic `CREATE`, `UPDATE`, or `NOOP` data.
 
 Neither marker nor title is caller-configurable. Marker text elsewhere in an
-ordinary body does not establish identity.
+ordinary body does not establish identity. The planner never truncates Markdown.
+A valid report whose complete rendered body exceeds the publication limit fails
+with `PUBLICATION_BODY_TOO_LARGE` before Issue inspection. Large inventories
+therefore require a future bounded-summary, artifact, or split-publication
+contract rather than silent data loss.
 
 ### 7. Injected GitHub Issue publisher — Task 004
 
@@ -94,11 +100,16 @@ The publisher reads no environment variable or token and has no direct Octokit
 dependency. It fixes `state` to `open`, starts at page 1, fixes `perPage` to 100,
 and applies a deterministic 100-page upper bound.
 
+Client methods, paginated records, and mutation responses are inspected through
+own property descriptors. Required values must be own data properties; accessors
+are rejected without invoking their getters. Descriptor or Proxy inspection
+failures are converted into stable, sanitized `IssuePublicationError` values.
+
 Before its first possible create or update, it completes:
 
 1. repository validation;
 2. report validation;
-3. Markdown byte-identity validation;
+3. Markdown byte-identity and publication-size validation;
 4. client-interface validation;
 5. all paginated reads;
 6. page and Issue-record validation;
@@ -110,6 +121,11 @@ Before its first possible create or update, it completes:
 A call performs zero or one remote mutation. It never creates and then updates,
 or updates more than once. Its result reports `mutationPerformed` independently
 from the immutable Task 003 report field.
+
+If create or update resolves but its response cannot be safely inspected, the
+publisher throws `INVALID_MUTATION_RESPONSE`. At that point the remote write may
+already have completed, so a caller must reconcile the canonical Issue before
+retrying instead of assuming zero mutation.
 
 ### 8. Customization application — future and separate
 
@@ -151,6 +167,6 @@ attempts a create.
 
 For the same explicit normalized inputs, classifier result, report object,
 Markdown, and publication plan are byte-for-byte or deep-equal stable. Titles,
-markers, pagination parameters, and page bounds are fixed. No current time,
-locale, random value, environment variable, or process-order source affects the
-plan.
+markers, length limits, pagination parameters, and page bounds are fixed. No
+current time, locale, random value, environment variable, or process-order source
+affects the plan.
