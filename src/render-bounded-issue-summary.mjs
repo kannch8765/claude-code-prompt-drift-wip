@@ -1,4 +1,8 @@
 import { FINDING_KINDS } from "./contracts.mjs";
+import {
+  cloneSafeIssueReportInput,
+  SafeIssueReportInspectionError,
+} from "./clone-safe-issue-report-input.mjs";
 import { cloneAndValidateIssueReport } from "./issue-report-contract.mjs";
 import { inlineCode, renderFindingMarkdown } from "./markdown-safety.mjs";
 import {
@@ -121,96 +125,15 @@ function readStrictDataRecord(
   return clone;
 }
 
-function inspectDataObject(value, path) {
-  let isArray = false;
-  if (value !== null && typeof value === "object") {
-    try {
-      isArray = Array.isArray(value);
-    } catch {
-      fail("UNSAFE_PROPERTY_ACCESS", path, "value could not be inspected safely");
-    }
-  }
-  if (value === null || typeof value !== "object") {
-    fail("INVALID_TYPE", path, "expected plain data");
-  }
-
-  let prototype;
+function cloneReportInput(value) {
   try {
-    prototype = Object.getPrototypeOf(value);
-  } catch {
-    fail("UNSAFE_PROPERTY_ACCESS", path, "value could not be inspected safely");
-  }
-  if (
-    (isArray && prototype !== Array.prototype) ||
-    (!isArray && prototype !== Object.prototype && prototype !== null)
-  ) {
-    fail("INVALID_TYPE", path, "expected plain data");
-  }
-
-  try {
-    return { isArray, descriptors: Object.getOwnPropertyDescriptors(value) };
-  } catch {
-    fail("UNSAFE_PROPERTY_ACCESS", path, "value could not be inspected safely");
-  }
-}
-
-function cloneStrictData(value, path) {
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-  const { isArray, descriptors } = inspectDataObject(value, path);
-  if (isArray) {
-    const lengthDescriptor = descriptors.length;
-    if (
-      lengthDescriptor === undefined ||
-      !("value" in lengthDescriptor) ||
-      !Number.isSafeInteger(lengthDescriptor.value) ||
-      lengthDescriptor.value < 0
-    ) {
-      fail("UNSAFE_PROPERTY_ACCESS", path, "array length could not be inspected safely");
+    return cloneSafeIssueReportInput(value, "report");
+  } catch (error) {
+    if (error instanceof SafeIssueReportInspectionError) {
+      fail(error.code, error.path, "report input could not be inspected safely");
     }
-    const allowed = new Set(["length"]);
-    const clone = [];
-    for (let index = 0; index < lengthDescriptor.value; index += 1) {
-      const key = String(index);
-      allowed.add(key);
-      const descriptor = descriptors[key];
-      if (descriptor === undefined) {
-        clone.push(undefined);
-      } else if (!("value" in descriptor)) {
-        fail(
-          "ACCESSOR_PROPERTY_NOT_ALLOWED",
-          `${path}[${index}]`,
-          "accessor properties are not part of the public contract",
-        );
-      } else {
-        clone.push(cloneStrictData(descriptor.value, `${path}[${index}]`));
-      }
-    }
-    for (const key of Reflect.ownKeys(descriptors)) {
-      if (typeof key !== "string" || !allowed.has(key)) {
-        fail("UNKNOWN_FIELD", path, "array contains a non-contract property");
-      }
-    }
-    return clone;
+    fail("UNSAFE_PROPERTY_ACCESS", "report", "report input could not be inspected safely");
   }
-
-  const clone = {};
-  for (const key of Reflect.ownKeys(descriptors)) {
-    if (typeof key !== "string") {
-      fail("UNKNOWN_FIELD", path, "symbol properties are not part of the public contract");
-    }
-    const descriptor = descriptors[key];
-    if (!("value" in descriptor)) {
-      fail(
-        "ACCESSOR_PROPERTY_NOT_ALLOWED",
-        `${path}.${key}`,
-        "accessor properties are not part of the public contract",
-      );
-    }
-    clone[key] = cloneStrictData(descriptor.value, `${path}.${key}`);
-  }
-  return clone;
 }
 
 function parseRepository(value, path) {
@@ -486,7 +409,7 @@ function translatePackageError(error) {
 
 export function prepareBoundedIssueSummary(input) {
   const record = readStrictDataRecord(input, "input", ["report", "markdown", "artifact"]);
-  const safeReport = cloneStrictData(record.report, "report");
+  const safeReport = cloneReportInput(record.report);
 
   let report;
   try {

@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 
+import {
+  cloneSafeIssueReportInput,
+  SafeIssueReportInspectionError,
+} from "./clone-safe-issue-report-input.mjs";
 import { cloneAndValidateIssueReport } from "./issue-report-contract.mjs";
 import { renderIssueMarkdown } from "./render-issue-markdown.mjs";
 
@@ -52,68 +56,6 @@ function inspectObject(value, path) {
   }
 }
 
-function cloneStrictData(value, path) {
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  const { isArray, descriptors } = inspectObject(value, path);
-  if (isArray) {
-    const lengthDescriptor = descriptors.length;
-    if (
-      lengthDescriptor === undefined ||
-      !("value" in lengthDescriptor) ||
-      !Number.isSafeInteger(lengthDescriptor.value) ||
-      lengthDescriptor.value < 0
-    ) {
-      fail("UNSAFE_PROPERTY_ACCESS", path, "array length could not be inspected safely");
-    }
-
-    const allowed = new Set(["length"]);
-    const clone = [];
-    for (let index = 0; index < lengthDescriptor.value; index += 1) {
-      const key = String(index);
-      allowed.add(key);
-      const descriptor = descriptors[key];
-      if (descriptor === undefined) {
-        clone.push(undefined);
-      } else if (!("value" in descriptor)) {
-        fail(
-          "ACCESSOR_PROPERTY_NOT_ALLOWED",
-          `${path}[${index}]`,
-          "accessor properties are not part of the public contract",
-        );
-      } else {
-        clone.push(cloneStrictData(descriptor.value, `${path}[${index}]`));
-      }
-    }
-
-    for (const key of Reflect.ownKeys(descriptors)) {
-      if (typeof key !== "string" || !allowed.has(key)) {
-        fail("UNKNOWN_FIELD", path, "array contains a non-contract property");
-      }
-    }
-    return clone;
-  }
-
-  const clone = {};
-  for (const key of Reflect.ownKeys(descriptors)) {
-    if (typeof key !== "string") {
-      fail("UNKNOWN_FIELD", path, "symbol properties are not part of the public contract");
-    }
-    const descriptor = descriptors[key];
-    if (!("value" in descriptor)) {
-      fail(
-        "ACCESSOR_PROPERTY_NOT_ALLOWED",
-        `${path}.${key}`,
-        "accessor properties are not part of the public contract",
-      );
-    }
-    clone[key] = cloneStrictData(descriptor.value, `${path}.${key}`);
-  }
-  return clone;
-}
-
 function readInput(value) {
   const { isArray, descriptors } = inspectObject(value, "input");
   if (isArray) {
@@ -143,6 +85,17 @@ function readInput(value) {
   };
 }
 
+function cloneReportInput(value) {
+  try {
+    return cloneSafeIssueReportInput(value, "report");
+  } catch (error) {
+    if (error instanceof SafeIssueReportInspectionError) {
+      fail(error.code, error.path, "report input could not be inspected safely");
+    }
+    fail("UNSAFE_PROPERTY_ACCESS", "report", "report input could not be inspected safely");
+  }
+}
+
 function sha256(content) {
   return `sha256:${createHash("sha256").update(Buffer.from(content, "utf8")).digest("hex")}`;
 }
@@ -169,7 +122,7 @@ function cloneDescriptor(value) {
 
 export function buildReportArtifactPackage(input) {
   const { report, markdown } = readInput(input);
-  const safeReport = cloneStrictData(report, "report");
+  const safeReport = cloneReportInput(report);
 
   let validatedReport;
   try {
