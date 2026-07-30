@@ -2,6 +2,10 @@ import {
   IssuePublicationError,
   planIssuePublication,
 } from "./plan-issue-publication.mjs";
+import {
+  BoundedIssueSummaryError,
+  prepareBoundedIssueSummary,
+} from "./render-bounded-issue-summary.mjs";
 
 const PER_PAGE = 100;
 const MAX_ISSUE_PAGES = 100;
@@ -47,7 +51,7 @@ function inspectPlainObject(
   }
 }
 
-function readStrictDataRecord(value, path, expectedKeys) {
+function readStrictDataRecord(value, path, expectedKeys, requiredKeys = expectedKeys) {
   const descriptors = inspectPlainObject(value, path);
   const expected = new Set(expectedKeys);
 
@@ -58,30 +62,39 @@ function readStrictDataRecord(value, path, expectedKeys) {
     if (!("value" in descriptors[key])) {
       fail(
         "ACCESSOR_PROPERTY_NOT_ALLOWED",
-        `${path}.${key}`,
+        `${path}.${String(key)}`,
         "accessor properties are not part of the public contract",
       );
+    }
+  }
+
+  for (const key of requiredKeys) {
+    if (descriptors[key] === undefined) {
+      fail("MISSING_FIELD", `${path}.${key}`, "required field is missing");
     }
   }
 
   const clone = {};
   for (const key of expectedKeys) {
     const descriptor = descriptors[key];
-    if (descriptor === undefined) {
-      fail("MISSING_FIELD", `${path}.${key}`, "required field is missing");
+    if (descriptor !== undefined) {
+      clone[key] = descriptor.value;
     }
-    clone[key] = descriptor.value;
   }
-  return clone;
+  return { clone, descriptors };
 }
 
 function requirePublisherInput(value) {
-  return readStrictDataRecord(value, "input", [
-    "repository",
-    "report",
-    "markdown",
-    "client",
-  ]);
+  const { clone, descriptors } = readStrictDataRecord(
+    value,
+    "input",
+    ["repository", "report", "markdown", "artifact", "client"],
+    ["repository", "report", "markdown", "client"],
+  );
+  return {
+    ...clone,
+    hasArtifact: descriptors.artifact !== undefined,
+  };
 }
 
 function parseRepository(value) {
@@ -255,17 +268,42 @@ function validateMutationResponse(value, path, expectedIssueNumber = null) {
   return issueNumber;
 }
 
+function preflightArtifactRepository({ repository, report, markdown, artifact }) {
+  let prepared;
+  try {
+    prepared = prepareBoundedIssueSummary({ report, markdown, artifact });
+  } catch (error) {
+    if (error instanceof BoundedIssueSummaryError) {
+      fail(error.code, error.path, "artifact publication preflight failed");
+    }
+    fail("INVALID_ARTIFACT_DESCRIPTOR", "artifact", "artifact publication preflight failed");
+  }
+  if (prepared.artifactRepository !== repository) {
+    fail(
+      "ARTIFACT_REPOSITORY_MISMATCH",
+      "artifact.repository",
+      "artifact repository must exactly match the publication repository",
+    );
+  }
+}
+
 export async function publishGitHubIssue(input) {
   const validatedInput = requirePublisherInput(input);
-  const { repository, report, markdown, client } = validatedInput;
+  const { repository, report, markdown, artifact, client, hasArtifact } = validatedInput;
   const { owner, repo } = parseRepository(repository);
 
-  // Preflight the complete Task 003 content and payload-size contract before any remote read.
-  planIssuePublication({ report, markdown, issues: [] });
+  if (hasArtifact) {
+    preflightArtifactRepository({ repository, report, markdown, artifact });
+    planIssuePublication({ report, markdown, artifact, issues: [] });
+  } else {
+    planIssuePublication({ report, markdown, issues: [] });
+  }
   const validatedClient = validateClient(client);
 
   const issues = await listAllOpenIssues({ owner, repo, client: validatedClient });
-  const plan = planIssuePublication({ report, markdown, issues });
+  const plan = hasArtifact
+    ? planIssuePublication({ report, markdown, artifact, issues })
+    : planIssuePublication({ report, markdown, issues });
 
   if (plan.action === "NOOP") {
     return {

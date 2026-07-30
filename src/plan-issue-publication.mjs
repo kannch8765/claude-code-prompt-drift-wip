@@ -3,11 +3,17 @@ import {
   ISSUE_REPORT_MARKER,
   renderIssueMarkdown,
 } from "./render-issue-markdown.mjs";
+import {
+  BoundedIssueSummaryError,
+  ISSUE_BOUNDED_BODY_MAX_CHARACTERS,
+  prepareBoundedIssueSummary,
+} from "./render-bounded-issue-summary.mjs";
 
 export const ISSUE_IDENTITY_MARKER =
   "<!-- claude-code-prompt-drift:rolling-issue:v1 -->";
 export const ISSUE_TITLE_MAX_CHARACTERS = 256;
 export const ISSUE_BODY_MAX_CHARACTERS = 65_536;
+export { ISSUE_BOUNDED_BODY_MAX_CHARACTERS };
 
 const TITLE_BY_STATUS = Object.freeze({
   SAFE_TO_REAPPLY: "Claude Code Prompt Drift — SAFE_TO_REAPPLY",
@@ -94,7 +100,7 @@ function readStrictDataRecord(value, path, expectedKeys, requiredKeys = expected
     if (!("value" in descriptors[key])) {
       fail(
         "ACCESSOR_PROPERTY_NOT_ALLOWED",
-        `${path}.${key}`,
+        `${path}.${String(key)}`,
         "accessor properties are not part of the public contract",
       );
     }
@@ -113,7 +119,7 @@ function readStrictDataRecord(value, path, expectedKeys, requiredKeys = expected
       clone[key] = descriptor.value;
     }
   }
-  return clone;
+  return { clone, descriptors };
 }
 
 function readDataArray(value, path) {
@@ -164,7 +170,16 @@ function readDataArray(value, path) {
 }
 
 function requirePlannerInput(value) {
-  return readStrictDataRecord(value, "input", ["report", "markdown", "issues"]);
+  const { clone, descriptors } = readStrictDataRecord(
+    value,
+    "input",
+    ["report", "markdown", "artifact", "issues"],
+    ["report", "markdown", "issues"],
+  );
+  return {
+    ...clone,
+    hasArtifact: descriptors.artifact !== undefined,
+  };
 }
 
 function countOccurrences(value, marker) {
@@ -181,7 +196,22 @@ function countOccurrences(value, marker) {
   }
 }
 
-function validateReportAndMarkdown(report, markdown) {
+function requireTitle(status) {
+  const title = TITLE_BY_STATUS[status];
+  if (title === undefined) {
+    fail("INVALID_REPORT", "report.status", "unsupported compatibility status");
+  }
+  if (title.length > ISSUE_TITLE_MAX_CHARACTERS) {
+    fail(
+      "PUBLICATION_TITLE_TOO_LARGE",
+      "title",
+      `publication title exceeds the ${ISSUE_TITLE_MAX_CHARACTERS}-character contract`,
+    );
+  }
+  return title;
+}
+
+function validateLegacyReportAndMarkdown(report, markdown) {
   let validatedReport;
   try {
     validatedReport = cloneAndValidateIssueReport(report);
@@ -213,29 +243,9 @@ function validateReportAndMarkdown(report, markdown) {
     );
   }
 
-  const title = TITLE_BY_STATUS[validatedReport.status];
-  if (title === undefined) {
-    fail("INVALID_REPORT", "report.status", "unsupported compatibility status");
-  }
-  if (title.length > ISSUE_TITLE_MAX_CHARACTERS) {
-    fail(
-      "PUBLICATION_TITLE_TOO_LARGE",
-      "title",
-      `publication title exceeds the ${ISSUE_TITLE_MAX_CHARACTERS}-character contract`,
-    );
-  }
-
+  const title = requireTitle(validatedReport.status);
   const body = `${ISSUE_IDENTITY_MARKER}\n\n${markdown}`;
-  if (
-    !body.startsWith(`${ISSUE_IDENTITY_MARKER}\n`) ||
-    countOccurrences(body, ISSUE_IDENTITY_MARKER) !== 1
-  ) {
-    fail(
-      "INVALID_PUBLICATION_BODY",
-      "body",
-      "publisher identity marker invariant was not satisfied",
-    );
-  }
+  validateBodyMarker(body);
   if (body.length > ISSUE_BODY_MAX_CHARACTERS) {
     fail(
       "PUBLICATION_BODY_TOO_LARGE",
@@ -247,8 +257,45 @@ function validateReportAndMarkdown(report, markdown) {
   return { title, body };
 }
 
+function validateBodyMarker(body) {
+  if (
+    !body.startsWith(`${ISSUE_IDENTITY_MARKER}\n`) ||
+    countOccurrences(body, ISSUE_IDENTITY_MARKER) !== 1
+  ) {
+    fail(
+      "INVALID_PUBLICATION_BODY",
+      "body",
+      "publisher identity marker invariant was not satisfied",
+    );
+  }
+}
+
+function validateArtifactReportAndMarkdown(report, markdown, artifact) {
+  let prepared;
+  try {
+    prepared = prepareBoundedIssueSummary({ report, markdown, artifact });
+  } catch (error) {
+    if (error instanceof BoundedIssueSummaryError) {
+      fail(error.code, error.path, "bounded Issue summary validation failed");
+    }
+    fail("INVALID_ARTIFACT_DESCRIPTOR", "artifact", "bounded Issue summary validation failed");
+  }
+
+  const title = requireTitle(prepared.status);
+  const body = `${ISSUE_IDENTITY_MARKER}\n\n${prepared.summary}`;
+  validateBodyMarker(body);
+  if (body.length > ISSUE_BOUNDED_BODY_MAX_CHARACTERS) {
+    fail(
+      "PUBLICATION_SUMMARY_TOO_LARGE",
+      "body",
+      `bounded publication body exceeds the ${ISSUE_BOUNDED_BODY_MAX_CHARACTERS}-character contract`,
+    );
+  }
+  return { title, body };
+}
+
 function requireIssueRecord(value, path) {
-  const record = readStrictDataRecord(
+  const { clone: record } = readStrictDataRecord(
     value,
     path,
     [...ISSUE_RECORD_KEYS],
@@ -347,10 +394,16 @@ function findCanonicalCandidate(issues) {
 
 export function planIssuePublication(input) {
   const validatedInput = requirePlannerInput(input);
-  const { title, body } = validateReportAndMarkdown(
-    validatedInput.report,
-    validatedInput.markdown,
-  );
+  const { title, body } = validatedInput.hasArtifact
+    ? validateArtifactReportAndMarkdown(
+        validatedInput.report,
+        validatedInput.markdown,
+        validatedInput.artifact,
+      )
+    : validateLegacyReportAndMarkdown(
+        validatedInput.report,
+        validatedInput.markdown,
+      );
   const candidate = findCanonicalCandidate(validatedInput.issues);
 
   if (candidate === null) {
